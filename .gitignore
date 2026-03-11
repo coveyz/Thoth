@@ -1,0 +1,52 @@
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+
+# VS Code（如你希望提交团队配置，可删掉这一段或按需改白名单）
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Dependencies ---
+**/node_modules/
+
+# --- Build outputs ---
+**/dist/
+**/build/
+**/out/
+**/.output/
+
+# Vite / Vue / bundler caches
+**/.vite/
+**/.cache/
+**/.temp/
+
+# --- TypeScript caches ---
+*.tsbuildinfo
+
+# --- Test / Coverage ---
+**/coverage/
+**/.nyc_output/
+
+# --- Env files (secrets) ---
+**/.env
+**/.env.*.local
+**/.env.local
+
+# 保留示例文件可提交（例如 server/.env.example）
+!**/.env.example
+
+# --- Optional: ignore lockfile backups ---
+*.bak
+
+# =========================================================
+# 如果你“确实”想整个不提交 web/ 和 server/（连源码都不要入库），取消注释：
+# /web/
+# /server/
