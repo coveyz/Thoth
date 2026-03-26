@@ -1,5 +1,6 @@
 import { createFakeProvider } from './fake';
-import { createOpenAICompatProvider } from './openaiCompat';
+// import { createOpenAICompatProvider } from './openaiCompat';
+import { createDeepSeekProvider } from './deepseekOpenAi';
 
 import type { Provider } from './types';
 import type { Env } from '../lib/env';
@@ -10,13 +11,13 @@ import type { Env } from '../lib/env';
  * - 否则 fallback 到 fake，保证接口可稳定验收
  */
 export function getProvider(env: Env): Provider {
-    // if (env.THOTH_BASE_URL && env.THOTH_API_KEY) {
-    //     return createOpenAICompatProvider({
-    //         baseUrl: env.THOTH_BASE_URL,
-    //         apiKey: env.THOTH_API_KEY,
-    //         model: env.THOTH_MODEL,
-    //     })
-    // };
+    if (env.THOTH_BASE_URL && env.THOTH_API_KEY) {
+        return createDeepSeekProvider({
+            baseUrl: env.THOTH_BASE_URL,
+            apiKey: env.THOTH_API_KEY,
+            model: env.THOTH_MODEL,
+        })
+    };
 
     return createFakeProvider();
 }

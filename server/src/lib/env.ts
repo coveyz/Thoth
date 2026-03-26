@@ -26,9 +26,9 @@ export function loadEnv(): Env {
         CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
 
         // Week1：允许为空（为空则走 fake provider），但建议你配上 DeepSeek
-        THOTH_BASE_URL: process.env.THOTH_BASE_URL || 'https://api.thoth.one/v1',
+        THOTH_BASE_URL: process.env.THOTH_BASE_URL || 'https://api.deepseek.com',
         THOTH_API_KEY: process.env.THOTH_API_KEY || '',
-        THOTH_MODEL: process.env.THOTH_MODEL || 'gpt-3.5-turbo',
+        THOTH_MODEL: process.env.THOTH_MODEL || 'deepseek-chat',
 
         THOTH_FIRST_TOKEN_TIMEOUT_MS: num('THOTH_FIRST_TOKEN_TIMEOUT_MS', 10000),
         THOTH_OVERALL_TIMEOUT_MS: num('THOTH_OVERALL_TIMEOUT_MS', 60000),
