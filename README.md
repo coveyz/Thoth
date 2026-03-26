@@ -2,7 +2,7 @@
  * @Author: coveyz zhangkairong123@qq.com
  * @Date: 2026-03-04 14:41:26
  * @LastEditors: coveyz zhangkairong123@qq.com
- * @LastEditTime: 2026-03-04 14:54:18
+ * @LastEditTime: 2026-03-26 16:13:45
  * @FilePath: /Thoth/README.md
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 -->
@@ -16,10 +16,11 @@
 
 **本周交付/验收**
 
-- [ ] 能发送消息并收到 SSE 流式增量输出
-- [ ] 支持停止生成（Abort）
-- [ ] 有最基本的 UI 状态：发送中、停止中、错误态
-- [ ] 后端是“可替换模型”的代理层（先不追求 RAG）
+- [x] 能发送消息并收到 SSE 流式增量输出
+- [x] 支持停止生成（Abort）
+- [x] 有最基本的 UI 状态：发送中、停止中、错误态
+- [x] 后端是“可替换模型”的代理层（先不追求 RAG）
+- [x] 正常流式、Stop、错 key 401、错 baseURL；每条后面写一句“结果：通过”。
 
 **一句话**：本周把“聊天产品体验”做出来。
 
@@ -42,7 +43,7 @@
 
 **本周交付/验收**
 
-- [x] 文档切分（chunk + overlap）+ embedding
+- [] 文档切分（chunk + overlap）+ embedding
 - [ ] 相似度检索 TopK + 拼 prompt
 - [ ] 返回并展示 sources（引用片段/来源）
 - [ ] 无命中/低相似度时：明确拒答或提示“文档未覆盖”（降幻觉）
@@ -60,4 +61,4 @@
 - [ ] 基础安全：PII 提示、最小化日志、RAG 防提示注入的基本约束
 - [ ] 回归题库：至少 20 条问答用例（手动/脚本都可），跑一次能验证核心功能
 
-**一句话**：本周把它做成“别人能 clone 运行 + 你敢拿去展示”的项目。
+**一句话**：本周把它做成“别人能 clone 运行 + 你敢拿去展示”的项目。****
