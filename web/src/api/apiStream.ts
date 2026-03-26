@@ -2,7 +2,7 @@
  * @Author: coveyz zhangkairong123@qq.com
  * @Date: 2026-03-12 20:49:01
  * @LastEditors: coveyz zhangkairong123@qq.com
- * @LastEditTime: 2026-03-16 20:53:17
+ * @LastEditTime: 2026-03-26 17:58:39
  * @FilePath: /Thoth/web/src/api/apiStream.ts
  */
 import type { SSEStart, SSEPing, SSEDone, SSEError } from '@/types/chat';
@@ -49,6 +49,8 @@ export const streamChat = async (args: {
 
   while (true) {
     const { value, done } = await reader.read();
+
+
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });

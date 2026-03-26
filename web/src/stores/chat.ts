@@ -2,7 +2,7 @@
  * @Author: coveyz zhangkairong123@qq.com
  * @Date: 2026-03-12 20:48:52
  * @LastEditors: coveyz zhangkairong123@qq.com
- * @LastEditTime: 2026-03-19 18:16:24
+ * @LastEditTime: 2026-03-26 17:56:26
  * @FilePath: /Thoth/web/src/stores/chat.ts
  */
 
@@ -42,6 +42,7 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.push({ id: makeId(), role: 'user', content });
   };
 
+  // 确保最后一条消息是 assistant， 没有则添加一个空的
   const ensureAssistant = () => {
     const last = messages.value[messages.value.length - 1];
     if (!last || last.role !== 'assistant') {
@@ -49,6 +50,7 @@ export const useChatStore = defineStore('chat', () => {
     };
   };
 
+  // 追加增量内容到最后一条 assistant 消息
   const appendAssistantDelta = (delta: string) => {
     ensureAssistant();
     const lastMessage = messages.value[messages.value.length - 1];
