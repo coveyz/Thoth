@@ -8,8 +8,21 @@ import type { Response } from 'express';
  * - ping: { t }
  * - done:  { ok: true }
  * - error: { code, message, requestId }
+ * week2 SSE 协议
+ * - tool_call: { name, arguments, reason }
+ * - tool_result: { name, ok: true, result }
+ * - tool_error: { name?, message }
  */
-export type SSEEventName = 'start' | 'delta' | 'end' | 'ping' | 'done' | 'error';
+export type SSEEventName =
+    | 'start'
+    | 'tool_call'
+    | 'tool_result'
+    | 'tool_error'
+    | 'delta'
+    // | 'end'
+    | 'ping'
+    | 'done'
+    | 'error';
 
 export function initSSE(res: Response) {
     // SSE 一般保持200 业务错误通过 event:error 告知前端
@@ -30,7 +43,10 @@ export function initSSE(res: Response) {
  */
 export function writeEvent(res: Response, event: SSEEventName, data: any) {
     res.write(`event: ${event}\n`);
-    res.write(`data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`);
+    res.write(`data: ${typeof data === 'string'
+        ? data
+        : JSON.stringify(data)}\n\n`
+    );
 };
 
 /**

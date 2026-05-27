@@ -1,9 +1,21 @@
 import { Router } from 'express';
 import { initSSE, writeEvent, endSSE, safeWriteEvent } from '../lib/sse';
 import { getProvider } from '../providers/index';
+import { isToolName } from '../tools';
+import { prepareAssistantTurn } from '../orchestrators/chatOrchestrators';
 
 import type { Env } from '../lib/env';
+import type { ToolChoice } from '../prompts/system';
 
+/** 解析客户端传入的 toolChoice 非法值统一回退到 auto */
+const readToolChoice = (value: unknown): ToolChoice => {
+    if (value === 'none') return 'none';
+    if (value === 'auto' || value === null) return 'auto';
+
+    if (isToolName(value)) return value;
+
+    return 'auto'
+}
 
 export function chatRouter(env: Env) {
     const router = Router();
@@ -19,8 +31,9 @@ export function chatRouter(env: Env) {
         res.socket?.setKeepAlive(true); // 启用 TCP keep-alive，检测死连接
 
 
-        // 解析 week1: 只收一个message
         const message = req.body?.message;
+        const toolChoice = readToolChoice(req.body?.toolChoice);
+
         if (typeof message !== 'string' || !message.trim()) {
             await safeWriteEvent(res, 'error', {
                 code: 'BAD_REQUEST',
@@ -30,14 +43,12 @@ export function chatRouter(env: Env) {
             return endSSE(res);
         };
 
-        // 用于中断上游请求
+        /** 用于中断上游请求 */
         const upstreamAbort = new AbortController();
-
-        /**
-         * 用来阻止 后续写入与循环继续
-         * 不用 req.on('close') 判断 stop (post时req的close 语义不等价于 SSE断开)
-         */
+        /** 用来阻止 后续写入与循环继续 不用 req.on('close') 判断 stop (post时req的close 语义不等价于 SSE断开) */
         let clientClosed = false;
+        /** 首token 超时 保证不会一直loading */
+        let gotAnyDelta = false;
 
         // 客户端断开连接， 比如用户关闭了页面， 这时我们应该中断上游请求， 并且不再写入 SSE
         res.on('close', () => {
@@ -46,6 +57,8 @@ export function chatRouter(env: Env) {
             upstreamAbort.abort();
             console.log(`[${requestId}] client closed (before end)`);
         });
+
+
         // 请求被中断， 比如客户端中断请求
         req.on('aborted', () => {
             clientClosed = true;
@@ -55,6 +68,7 @@ export function chatRouter(env: Env) {
 
         const provider = getProvider(env);
         // start事件： 协议固定
+        // 无论 direct 还是 tool 模式， 都先发送 start 事件， 前端拿到 start 事件后才会展示 loading 状态， 避免模型响应慢时 前端一直loading
         if (!(await safeWriteEvent(res, 'start', { requestId, model: provider.model }))) {
             // 写不进去说明链接已经断了， 直接结束
             clientClosed = true;
@@ -74,34 +88,32 @@ export function chatRouter(env: Env) {
             });
         }, env.THOTH_PING_INTERVAL_MS);
 
-        // 首token 超时 保证不会一直loading
-        let gotAnyDelta = false;
+        // const firstTokenTimer = setTimeout(() => {
+        //     if (clientClosed || gotAnyDelta) return;
 
-        const firstTokenTimer = setTimeout(() => {
-            if (clientClosed || gotAnyDelta) return;
+        //     // 超时触发： 同时阻止 + 阻止后续写入
+        //     clientClosed = true;
+        //     upstreamAbort.abort();
 
-            // 超时触发： 同时阻止 + 阻止后续写入
-            clientClosed = true;
-            upstreamAbort.abort();
+        //     safeWriteEvent(res, 'error', {
+        //         code: 'FIRST_TOKEN_TIMEOUT',
+        //         message: `no token within ${env.THOTH_FIRST_TOKEN_TIMEOUT_MS}ms`,
+        //         requestId
+        //     }).finally(() => {
+        //         clearInterval(pingTimer);
+        //         endSSE(res);
+        //     });
 
-            safeWriteEvent(res, 'error', {
-                code: 'FIRST_TOKEN_TIMEOUT',
-                message: `no token within ${env.THOTH_FIRST_TOKEN_TIMEOUT_MS}ms`,
-                requestId
-            }).finally(() => {
-                clearInterval(pingTimer);
-                endSSE(res);
-            });
-
-        }, env.THOTH_FIRST_TOKEN_TIMEOUT_MS);
+        // }, env.THOTH_FIRST_TOKEN_TIMEOUT_MS);
 
         // 整体超时： 防止长时间挂起
+
         const overallTimer = setTimeout(() => {
             if (clientClosed) return;
 
             clientClosed = true;
             upstreamAbort.abort();
-            
+
             safeWriteEvent(res, 'error', {
                 code: 'OVERALL_TIMEOUT',
                 message: `overall timeout of ${env.THOTH_OVERALL_TIMEOUT_MS}ms`,
@@ -112,24 +124,122 @@ export function chatRouter(env: Env) {
             });
         }, env.THOTH_OVERALL_TIMEOUT_MS);
 
+        let firstTokenTimer: ReturnType<typeof setTimeout> | null = null;
+
         try {
             // 主流程循环： 把provider 的 token 增量转换成 delta 事件
-            for await (const delta of provider.stream({ message }, { signal: upstreamAbort.signal })) {
+            // for await (const delta of provider.stream({ message }, { signal: upstreamAbort.signal })) {
+            //     if (clientClosed) break;
+
+            //     gotAnyDelta = true;
+            //     clearTimeout(firstTokenTimer);
+
+            //     // writeEvent(res, 'delta', delta);
+            //     const ok = await safeWriteEvent(res, 'delta', delta);
+            //     if (!ok) {
+            //         clientClosed = true;
+            //         upstreamAbort.abort();
+            //         break;
+            //     }
+            // };
+            // 正常完成： done;
+            // if (!clientClosed) {
+            //     await safeWriteEvent(res, 'done', { ok: true });
+            //     endSSE(res);
+            // };
+            // Week1 收到用户消息直接 provider.stream
+            // week2 先经过编排 决定是否执行工具，并生成最终回答上下文
+            const prepared = await prepareAssistantTurn({
+                provider,
+                userMessage: message.trim(),
+                requestId,
+                signal: upstreamAbort.signal,
+                toolChoice
+            })
+
+            if (clientClosed) return;
+
+            // 工具调用开始，先把调用了什么工具， 为什么调用，参数是什么告诉前端
+            if (prepared.toolCall) {
+                const ok = await safeWriteEvent(res, 'tool_call', {
+                    name: prepared.toolCall.name,
+                    arguments: prepared.toolCall.arguments,
+                    reason: prepared.toolCall.reason
+                })
+
+                if (!ok) {
+                    clientClosed = true;
+                    upstreamAbort.abort();
+                    return;
+                }
+            }
+            // 工具执行成功， 通知前端工具结果
+            if (prepared.toolResult !== undefined) {
+                const ok = await safeWriteEvent(res, 'tool_result', {
+                    name: prepared.toolCall?.name,
+                    ok: true,
+                    result: prepared.toolResult
+                })
+
+                if (!ok) {
+                    clientClosed = true;
+                    upstreamAbort.abort();
+                    return;
+                }
+            }
+            // 工具执行失败， 通知前端工具错误，后续仍继续走最终回答 fallback
+            if (prepared.toolError) {
+                const ok = await safeWriteEvent(res, 'tool_error', {
+                    name: prepared.toolCall?.name,
+                    message: prepared.toolError
+                })
+                if (!ok) {
+                    clientClosed = true;
+                    upstreamAbort.abort();
+                    return;
+                }
+            }
+
+            // fist token timeout 只作用在最终回答流
+            // 工具决策 和 工具执行 阶段由 overall timeout 统一兜底
+            firstTokenTimer = setTimeout(() => {
+                if (clientClosed || gotAnyDelta) return;
+
+                clientClosed = true;
+                upstreamAbort.abort();
+
+                safeWriteEvent(res, 'error', {
+                    code: "FIRST_TOKEN_TIMEOUT",
+                    message: `no token within ${env.THOTH_FIRST_TOKEN_TIMEOUT_MS}ms after tool execution`,
+                    requestId
+                }).finally(() => {
+                    clearInterval(pingTimer);
+                    endSSE(res)
+                })
+
+            }, env.THOTH_FIRST_TOKEN_TIMEOUT_MS);
+
+            for await (const delta of provider.stream(
+                { messages: prepared.finalMessages, temperature: 0.2 },
+                { signal: upstreamAbort.signal }
+            )) {
                 if (clientClosed) break;
 
                 gotAnyDelta = true;
-                clearTimeout(firstTokenTimer);
 
-                // writeEvent(res, 'delta', delta);
+                if (firstTokenTimer) {
+                    clearTimeout(firstTokenTimer);
+                    firstTokenTimer = null;
+                }
+
                 const ok = await safeWriteEvent(res, 'delta', delta);
                 if (!ok) {
                     clientClosed = true;
                     upstreamAbort.abort();
                     break;
                 }
-            };
+            }
 
-            // 正常完成： done;
             if (!clientClosed) {
                 await safeWriteEvent(res, 'done', { ok: true });
                 endSSE(res);
@@ -137,7 +247,7 @@ export function chatRouter(env: Env) {
         } catch (error: any) {
             // 如果客户端已断开， 不需要再写SSE
             if (clientClosed) return;
-            
+
             // 用户 stop /  上游被中断abort， 统一当正常结束 （done + reason）
             if (error?.name === 'AbortError') {
                 await safeWriteEvent(res, 'done', { ok: true, reason: 'stop' });
@@ -146,7 +256,9 @@ export function chatRouter(env: Env) {
 
             // 其他异常: error事件返回给前端， 避免一直loading
             const code = error?.code ?? "INTERNAL_ERROR";
-            const messageOut = typeof error?.message === 'string' ? error.message : 'unknown error';
+            const messageOut = typeof error?.message === 'string'
+                ? error.message
+                : 'unknown error';
 
             console.error(`[${requestId}] error: ${error}`);
             console.error(error);
@@ -156,8 +268,10 @@ export function chatRouter(env: Env) {
             endSSE(res);
         } finally {
             clearInterval(pingTimer);
-            clearTimeout(firstTokenTimer);
             clearTimeout(overallTimer);
+            if (firstTokenTimer) {
+                clearTimeout(firstTokenTimer);
+            }
         }
     });
 
