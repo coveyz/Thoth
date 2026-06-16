@@ -42,7 +42,7 @@ export const buildToolDecisionMessages = (
                 'JSON 对象格式如下：',
                 '{',
                 '  "mode": "direct" | "tool",',
-                '  "reason": "简短中文理由"',
+                '  "reason": "简短中文理由",',
                 '  "reply": "当 mode=direct 时必填，给用户的简短回答草稿",',
                 '  "toolName": "当 mode=tool 时必填",',
                 '  "arguments": { "当 mode=tool 时必填，必须符合工具参数结构" },',

@@ -1,18 +1,15 @@
-/*
- * @Author: coveyz zhangkairong123@qq.com
- * @Date: 2026-03-12 20:48:52
- * @LastEditors: coveyz zhangkairong123@qq.com
- * @LastEditTime: 2026-03-26 17:56:26
- * @FilePath: /Thoth/web/src/stores/chat.ts
- */
-
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import { streamChat } from '@/api/apiStream';
-import type { ChatMessage, SSEError, SSEStart } from '@/types/chat';
+import type { ChatMessage, ChatTurnTrace, SSEDone, SSEError, SSEStart, SSEToolCall, SSEToolError, SSEToolResult, ToolChoice } from '@/types/chat';
 
 type Status = 'idle' | 'streaming' | 'stopping' | 'error';
+
+type NewToolEvent =
+  | { type: 'tool_call', payload: SSEToolCall }
+  | { type: 'tool_result', payload: SSEToolResult }
+  | { type: 'tool_error', payload: SSEToolError };
 
 
 const makeId = () => {
@@ -20,7 +17,11 @@ const makeId = () => {
 };
 
 export const useChatStore = defineStore('chat', () => {
+  // 正文消息， 仍然只放 user / assistant
   const messages = ref<ChatMessage[]>([]);
+  // 每轮请求的工具轨迹
+  const turns = ref<ChatTurnTrace[]>([]);
+
   const status = ref<Status>('idle');
   const errorText = ref<string>('');
 
@@ -33,16 +34,29 @@ export const useChatStore = defineStore('chat', () => {
    */
   const model = ref('');
 
+  const toolChoice = ref<ToolChoice>('auto');
   const controller = ref<AbortController | null>(null);
+  const activeTurnId = ref<string | null>(null);
 
   const isBusy = computed(() => status.value === 'streaming' || status.value === 'stopping');
   const canSend = computed(() => status.value === 'idle' || status.value === 'error');
+
+  // 当前活跃的请求轮次， 用于在顶部状态栏展示 requestId / model / toolChoice
+  const activeTurn = computed(() => {
+    return turns.value.find((item) => item.id === activeTurnId.value) ?? null;
+  });
+  const activeRequestId = computed(() => {
+    return activeTurn.value?.requestId ?? 'pending';
+  })
+  const activeModel = computed(() => {
+    return activeTurn.value?.model ?? 'pending';
+  })
 
   const pushUser = (content: string) => {
     messages.value.push({ id: makeId(), role: 'user', content });
   };
 
-  // 确保最后一条消息是 assistant， 没有则添加一个空的
+  /** 确保最后一条消息是 assistant， 没有则添加一个空的 */
   const ensureAssistant = () => {
     const last = messages.value[messages.value.length - 1];
     if (!last || last.role !== 'assistant') {
@@ -50,7 +64,7 @@ export const useChatStore = defineStore('chat', () => {
     };
   };
 
-  // 追加增量内容到最后一条 assistant 消息
+  /** 追加增量内容到最后一条 assistant 消息 */
   const appendAssistantDelta = (delta: string) => {
     ensureAssistant();
     const lastMessage = messages.value[messages.value.length - 1];
@@ -58,6 +72,69 @@ export const useChatStore = defineStore('chat', () => {
       lastMessage.content += delta;
     };
   };
+
+  /** 新建一轮 trace， 新一轮用户输入， 工具策略，后续工具事件都归到这里 */
+  const createTurn = (userText: string) => {
+    const turn: ChatTurnTrace = {
+      id: makeId(),
+      userText,
+      toolChoice: toolChoice.value,
+      createdAt: Date.now(),
+      outcome: 'pending',
+      events: []
+    }
+
+    turns.value.push(turn);
+    activeTurnId.value = turn.id;
+
+    return turn;
+  };
+
+  const updateActiveTurn = (
+    updater: (turn: ChatTurnTrace) => void
+  ) => {
+    const turn = activeTurn.value;
+    if (!turn) return;
+    updater(turn);
+  };
+
+  /** 工具追加到当前轮次， 在这补充 id 时间戳，组件只负责渲染 */
+  const pushTurnEvent = (event: NewToolEvent) => {
+    updateActiveTurn(turn => {
+      const nextEvent = {
+        id: makeId(),
+        createdAt: Date.now(),
+        ...event
+      };
+
+      turn.events.push(nextEvent);
+    });
+  }
+
+  const markStarted = (payload: SSEStart) => {
+    updateActiveTurn(turn => {
+      turn.requestId = payload.requestId;
+      turn.model = payload.model;
+    })
+  };
+
+  const markDone = (payload: SSEDone) => {
+    updateActiveTurn(turn => {
+      turn.outcome = payload.reason === 'stop' ? 'stopped' : 'done';
+      turn.doneReason = payload.reason;
+    })
+  };
+
+  const markError = (text: string) => {
+    updateActiveTurn(turn => {
+      turn.outcome = 'error';
+      turn.errorText = text;
+    })
+  }
+
+  const setToolChoice = (value: ToolChoice) => {
+    toolChoice.value = value;
+  }
 
   const send = async (text: string) => {
     const content = text.trim();
@@ -69,6 +146,7 @@ export const useChatStore = defineStore('chat', () => {
 
     // 体验： 先显示信息 再开始请求， 避免网络请求慢导致的无响应感
     pushUser(content);
+    createTurn(content);
     ensureAssistant();
 
     controller.value = new AbortController();
@@ -78,28 +156,48 @@ export const useChatStore = defineStore('chat', () => {
       await streamChat({
         message: content,
         model: model.value || undefined,
+        toolChoice: toolChoice.value,
         signal: controller.value.signal,
         callbacks: {
-          onStart: (p) => (startInfo = p),
+          onStart: (payload) => {
+            startInfo = payload
+            markStarted(payload);
+          },
+          onToolCall: (payload) => {
+            pushTurnEvent({ type: 'tool_call', payload });
+          },
+          onToolResult: (payload) => {
+            pushTurnEvent({ type: 'tool_result', payload });
+          },
+          onToolError: (payload) => {
+            pushTurnEvent({ type: 'tool_error', payload });
+          },
           onDelta: (delta) => appendAssistantDelta(delta),
           onError: (error: SSEError) => {
             status.value = 'error'
             errorText.value = `${error.code}: ${error.message} ${startInfo?.requestId ? startInfo.requestId : ''}`
+            markError(errorText.value);
           },
-          onDone: () => {
+          onDone: (payload) => {
+            markDone(payload)
             if (status.value !== 'error') status.value = 'idle';
           }
         }
       })
 
       // 兜底： 流结束但没 done
-      if (status.value === 'streaming') status.value = 'idle';
+      if (status.value === 'streaming') {
+        markDone({ ok: true });
+        status.value = 'idle';
+      }
     } catch (error: any) {
       if (error?.name === 'AbortError') {
         status.value = 'idle';
+        markDone({ ok: true, reason: 'stop' })
       } else {
         status.value = 'error';
         errorText.value = error?.message ?? String(error);
+        markError(errorText.value);
       };
     } finally {
       controller.value = null;
@@ -126,12 +224,18 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     messages,
+    turns,
     status,
     errorText,
     conversationId,
     model,
+    toolChoice,
+    activeTurn,
+    activeRequestId,
+    activeModel,
     isBusy,
     canSend,
+    setToolChoice,
     send,
     stop,
     clearError,

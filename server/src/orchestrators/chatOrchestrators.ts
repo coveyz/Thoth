@@ -42,6 +42,8 @@ const toRecord = (value: unknown) => {
     return value as Record<string, unknown>;
 };
 
+// 这个函数负责把模型的工具决策输出 规范化成一个结构化的 ToolDecision 对象，
+// 并且根据服务端的控制策略进行调整
 const normalizeToolDecision = (
     parsed: ToolDecision | null,
     toolChoice: ToolChoice
@@ -97,6 +99,8 @@ const normalizeToolDecision = (
     };
 };
 
+// 这个函数负责准备助理的回复， 
+// 包括是否调用工具， 调用哪个工具， 工具参数是什么， 以及最终回复用户的消息是什么
 export const prepareAssistantTurn = async (
     input: PrepareAssistantTurnInput
 ): Promise<PrepareAssistantTurnOutput> => {

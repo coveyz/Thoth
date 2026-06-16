@@ -30,10 +30,11 @@
 
 **本周交付/验收**
 
-- [ ] Prompt 工程化：system prompt + 结构化输出（建议 JSON）
-- [ ] 至少 1 个工具（例如：extract_todos / summarize / make_plan）
-- [ ] 工具调用链路跑通：模型决定调用 → 你的代码执行 → 再生成最终回复
-- [ ] 失败兜底：工具报错时能回退成普通回答或提示
+- [x] Prompt 工程化：system prompt + 结构化输出（建议 JSON）
+- [x] 至少 1 个工具（例如：extract_todos / summarize / make_plan）
+- [x] 工具调用链路跑通：模型决定调用 → 你的代码执行 → 再生成最终回复
+- [x] 失败兜底：工具报错时能回退成普通回答或提示
+- [x] 冒烟用例记录见 [WEEK2_CHECKLIST.md](WEEK2_CHECKLIST.md)
 
 **一句话**：本周让 Thoth 从“会聊天”升级为“会办事”。
 

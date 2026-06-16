@@ -1,21 +1,14 @@
-<!--
- * @Author: coveyz zhangkairong123@qq.com
- * @Date: 2026-03-18 21:24:31
- * @LastEditors: coveyz zhangkairong123@qq.com
- * @LastEditTime: 2026-03-25 21:46:58
- * @FilePath: /Thoth/web/src/components/Chat/MessageList.vue
--->
 <script setup lang="ts">
 import { computed } from 'vue';
 
 import { useAutoScroll } from '@/hooks/useAutoScroll';
-import type { ChatMessage } from '@/types/chat';
+import type { ChatMessage, ChatStatus } from '@/types/chat';
 
 const props = defineProps<{
   messages: ChatMessage[]
-  status: 'idle' | 'streaming' | 'stopping' | 'error';
+  status: ChatStatus
 }>();
-
+// 自动滚动 只关注 1. 消息是否变化， 2. 最后一条内容是否继续追加
 const lastContent = computed(() => props.messages[props.messages.length - 1]?.content || '');
 const { bottomRef } = useAutoScroll(() => `${props.messages.length}: ${lastContent.value}`);
 </script>

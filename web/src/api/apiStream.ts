@@ -1,11 +1,6 @@
-/*
- * @Author: coveyz zhangkairong123@qq.com
- * @Date: 2026-03-12 20:49:01
- * @LastEditors: coveyz zhangkairong123@qq.com
- * @LastEditTime: 2026-03-26 17:58:39
- * @FilePath: /Thoth/web/src/api/apiStream.ts
- */
-import type { SSEStart, SSEPing, SSEDone, SSEError } from '@/types/chat';
+import type {
+  SSEStart, SSEPing, SSEDone, SSEError, SSEToolCall, SSEToolError, SSEToolResult, ToolChoice,
+} from '@/types/chat';
 
 type StreamCallbacks = {
   onStart?: (p: SSEStart) => void;
@@ -13,6 +8,10 @@ type StreamCallbacks = {
   onPing?: (p: SSEPing) => void;
   onDone?: (p: SSEDone) => void;
   onError?: (p: SSEError) => void;
+
+  onToolCall?: (p: SSEToolCall) => void
+  onToolResult?: (p: SSEToolResult) => void
+  onToolError?: (p: SSEToolError) => void
 };
 
 /**
@@ -22,10 +21,11 @@ type StreamCallbacks = {
 export const streamChat = async (args: {
   message: string,
   model?: string,
+  toolChoice?: ToolChoice,
   signal: AbortSignal,
   callbacks: StreamCallbacks,
 }) => {
-  const { message, model, signal, callbacks } = args;
+  const { message, model, toolChoice, signal, callbacks } = args;
 
   const resp = await fetch('/api/chat/stream', {
     method: 'POST',
@@ -33,7 +33,7 @@ export const streamChat = async (args: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
     },
-    body: JSON.stringify({ message, model }),
+    body: JSON.stringify({ message, model, toolChoice }),
     signal,
   });
 
@@ -42,6 +42,7 @@ export const streamChat = async (args: {
     callbacks.onError?.({ code: `HTTP_${resp.status}`, message: text || `HTTP ${resp.status}` });
     return;
   };
+
   const reader = resp.body.getReader();
   const decoder = new TextDecoder('utf-8');
 
@@ -49,7 +50,6 @@ export const streamChat = async (args: {
 
   while (true) {
     const { value, done } = await reader.read();
-
 
     if (done) break;
 
@@ -72,6 +72,7 @@ export const streamChat = async (args: {
       if (!eventName) continue;
       const dataRaw = dataLines.join('\n');
 
+      // delta 纯文本增量， 不走 JSON.parse
       if (eventName === 'delta') {
         callbacks.onDelta?.(dataRaw);
         continue;
@@ -80,6 +81,9 @@ export const streamChat = async (args: {
       try {
         const obj = JSON.parse(dataRaw);
         if (eventName === 'start') callbacks.onStart?.(obj);
+        if (eventName === 'tool_call') callbacks.onToolCall?.(obj);
+        if (eventName === 'tool_result') callbacks.onToolResult?.(obj);
+        if (eventName === 'tool_error') callbacks.onToolError?.(obj);
         if (eventName === 'ping') callbacks.onPing?.(obj);
         if (eventName === 'done') callbacks.onDone?.(obj);
         if (eventName === 'error') callbacks.onError?.(obj);

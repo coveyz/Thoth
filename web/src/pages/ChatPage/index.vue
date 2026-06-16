@@ -5,7 +5,10 @@ import { ChatView } from '@/components';
 <template>
   <section>
     <h1 class="h1">Chat</h1>
-    <p class="p">Week1：流式输出 + Stop + 错误提示 + 自动滚动。</p>
+    <!-- <p class="p">Week1：流式输出 + Stop + 错误提示 + 自动滚动。</p> -->
+    <p class="p">
+      Week2: 保留流式输出，Stop，错误提示，同时新增工具策略控制和工具轨迹展示
+    </p>
     <chat-view />
   </section>
 </template>

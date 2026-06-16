@@ -57,8 +57,6 @@ export function chatRouter(env: Env) {
             upstreamAbort.abort();
             console.log(`[${requestId}] client closed (before end)`);
         });
-
-
         // 请求被中断， 比如客户端中断请求
         req.on('aborted', () => {
             clientClosed = true;
@@ -66,6 +64,7 @@ export function chatRouter(env: Env) {
             console.log(`[${requestId}] client aborted (before end)`);
         });
 
+        // 选择 provider， 目前根据环境变量决定，后续可以更复杂的策略
         const provider = getProvider(env);
         // start事件： 协议固定
         // 无论 direct 还是 tool 模式， 都先发送 start 事件， 前端拿到 start 事件后才会展示 loading 状态， 避免模型响应慢时 前端一直loading
@@ -88,26 +87,7 @@ export function chatRouter(env: Env) {
             });
         }, env.THOTH_PING_INTERVAL_MS);
 
-        // const firstTokenTimer = setTimeout(() => {
-        //     if (clientClosed || gotAnyDelta) return;
-
-        //     // 超时触发： 同时阻止 + 阻止后续写入
-        //     clientClosed = true;
-        //     upstreamAbort.abort();
-
-        //     safeWriteEvent(res, 'error', {
-        //         code: 'FIRST_TOKEN_TIMEOUT',
-        //         message: `no token within ${env.THOTH_FIRST_TOKEN_TIMEOUT_MS}ms`,
-        //         requestId
-        //     }).finally(() => {
-        //         clearInterval(pingTimer);
-        //         endSSE(res);
-        //     });
-
-        // }, env.THOTH_FIRST_TOKEN_TIMEOUT_MS);
-
-        // 整体超时： 防止长时间挂起
-
+        /** 整体超时： 防止长时间挂起 */
         const overallTimer = setTimeout(() => {
             if (clientClosed) return;
 
@@ -127,26 +107,6 @@ export function chatRouter(env: Env) {
         let firstTokenTimer: ReturnType<typeof setTimeout> | null = null;
 
         try {
-            // 主流程循环： 把provider 的 token 增量转换成 delta 事件
-            // for await (const delta of provider.stream({ message }, { signal: upstreamAbort.signal })) {
-            //     if (clientClosed) break;
-
-            //     gotAnyDelta = true;
-            //     clearTimeout(firstTokenTimer);
-
-            //     // writeEvent(res, 'delta', delta);
-            //     const ok = await safeWriteEvent(res, 'delta', delta);
-            //     if (!ok) {
-            //         clientClosed = true;
-            //         upstreamAbort.abort();
-            //         break;
-            //     }
-            // };
-            // 正常完成： done;
-            // if (!clientClosed) {
-            //     await safeWriteEvent(res, 'done', { ok: true });
-            //     endSSE(res);
-            // };
             // Week1 收到用户消息直接 provider.stream
             // week2 先经过编排 决定是否执行工具，并生成最终回答上下文
             const prepared = await prepareAssistantTurn({
