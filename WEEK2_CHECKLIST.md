@@ -94,10 +94,27 @@ Week2 新增事件：
 - 当前工具主要是规则型本地工具，适合学习 Tool Calling 的基础链路。
 - 下一阶段进入 RAG 前，可以先补一轮最小测试，覆盖工具决策解析、工具执行成功、工具执行失败和 SSE 事件解析。
 
-## 自检问题
+## Week2 
+   1. Tool Calling 边界
+    模型负责输出工具名和参数，后端负责执行工具，模型在基于真是结果回答
+   2. 两段调用
+    generate 用于工具决策，要求完整，稳定可解析
+    stream 用于最终回答，面向用户体验
+   3. 状态设计
+    meesages 保存聊天上下文
+    turns 保存工具轨迹和调试信息
 
-- Tool Calling 是模型真的执行代码吗？
-- 为什么工具决策阶段要用 `temperature: 0`？
-- `tool_call` 和最终回答为什么要分成两个阶段？
-- 工具失败时，为什么不能让模型假装工具成功？
-- 前端为什么要把工具轨迹和聊天正文分开存？
+## 从用户点击发送开始，到前端看到第一段 assistant 正文 delta 之前，系统中间大概经历了哪些步骤
+用户点击 Send
+    -> store 创建 user message、当前 turn、assistant 占位消息、AbortController
+    -> apiStream 用 fetch POST 请求后端，并准备解析 SSE
+    -> 后端校验 message/toolChoice，初始化 SSE、abort、timeout、ping
+    -> 后端选择 provider，发送 start 事件
+    -> prepareAssistantTurn 根据 toolChoice 决定是否进入工具决策
+    -> 如果需要工具：provider.generate 输出工具决策 JSON
+    -> 后端 parse/normalize 决策
+    -> 后端执行真实工具，发送 tool_call/tool_result 或 tool_error
+    -> 后端构造 finalMessages
+    -> route 调 provider.stream(finalMessages)
+    -> 第一段 delta 通过 SSE 发给前端
+    -> 前端 onDelta append 到 assistant message

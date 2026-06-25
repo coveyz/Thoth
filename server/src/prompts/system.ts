@@ -18,7 +18,9 @@ const renderToolDocs = (tools: ToolDefinition[]) => {
         .join('\n\n');
 };
 
-/** 通过 system 将输出格式 卡死 */
+/** 
+ * 通过 system 将输出格式 卡死 , 构建工具理由prompt
+ */
 export const buildToolDecisionMessages = (
     userMessage: string,
     tools: ToolDefinition[],
@@ -78,6 +80,8 @@ export const buildDirectAnswerMessages = (
             content: userMessage
         }
     ];
+
+    // console.log('buildDirectAnswerMessages', { userMessage, directReply });
 
     if (directReply && directReply.trim()) {
         messages.push({

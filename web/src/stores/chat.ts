@@ -17,9 +17,9 @@ const makeId = () => {
 };
 
 export const useChatStore = defineStore('chat', () => {
-  // 正文消息， 仍然只放 user / assistant
+  /** 聊天正文  仍然只放 user / assistant */
   const messages = ref<ChatMessage[]>([]);
-  // 每轮请求的工具轨迹
+  /** 每轮请求的工具轨迹 */
   const turns = ref<ChatTurnTrace[]>([]);
 
   const status = ref<Status>('idle');
@@ -52,6 +52,7 @@ export const useChatStore = defineStore('chat', () => {
     return activeTurn.value?.model ?? 'pending';
   })
 
+  /** 用户消息 放进聊天正文  */
   const pushUser = (content: string) => {
     messages.value.push({ id: makeId(), role: 'user', content });
   };
@@ -64,7 +65,7 @@ export const useChatStore = defineStore('chat', () => {
     };
   };
 
-  /** 追加增量内容到最后一条 assistant 消息 */
+  /** 追加增量内容到最后一条 assistant 消息， 增量追加 */
   const appendAssistantDelta = (delta: string) => {
     ensureAssistant();
     const lastMessage = messages.value[messages.value.length - 1];
@@ -111,6 +112,7 @@ export const useChatStore = defineStore('chat', () => {
     });
   }
 
+  /** 更新 requestId model */
   const markStarted = (payload: SSEStart) => {
     updateActiveTurn(turn => {
       turn.requestId = payload.requestId;
@@ -144,14 +146,12 @@ export const useChatStore = defineStore('chat', () => {
     errorText.value = '';
     status.value = 'streaming';
 
-    // 体验： 先显示信息 再开始请求， 避免网络请求慢导致的无响应感
     pushUser(content);
     createTurn(content);
     ensureAssistant();
 
     controller.value = new AbortController();
     let startInfo: SSEStart | null = null;
-
     try {
       await streamChat({
         message: content,
@@ -166,6 +166,7 @@ export const useChatStore = defineStore('chat', () => {
           onToolCall: (payload) => {
             pushTurnEvent({ type: 'tool_call', payload });
           },
+          /**  */
           onToolResult: (payload) => {
             pushTurnEvent({ type: 'tool_result', payload });
           },

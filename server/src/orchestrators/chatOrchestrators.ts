@@ -42,8 +42,10 @@ const toRecord = (value: unknown) => {
     return value as Record<string, unknown>;
 };
 
-// 这个函数负责把模型的工具决策输出 规范化成一个结构化的 ToolDecision 对象，
-// 并且根据服务端的控制策略进行调整
+/**
+ * 这个函数负责把模型的工具决策输出 规范化成一个结构化的 ToolDecision 对象，
+ * 并且根据服务端的控制策略进行调整
+ */
 const normalizeToolDecision = (
     parsed: ToolDecision | null,
     toolChoice: ToolChoice
@@ -99,16 +101,26 @@ const normalizeToolDecision = (
     };
 };
 
-// 这个函数负责准备助理的回复， 
-// 包括是否调用工具， 调用哪个工具， 工具参数是什么， 以及最终回复用户的消息是什么
+/**
+ * 这个函数负责准备助理的回复， 核心编排
+ * 包括是否调用工具， 调用哪个工具， 工具参数是什么， 以及最终回复用户的消息是什么
+ */
 export const prepareAssistantTurn = async (
     input: PrepareAssistantTurnInput
 ): Promise<PrepareAssistantTurnOutput> => {
+    // console.log('prepareAssistantTurn', input);
+
     if (input.toolChoice === 'none') {
         return {
             finalMessages: buildDirectAnswerMessages(input.userMessage)
         }
     };
+
+    // console.log('messages=>', buildToolDecisionMessages(
+    //             input.userMessage,
+    //             listTools(),
+    //             input.toolChoice
+    //         ),)
 
     // 让模型输出 结构化 ToolDecision
     const rawDecision = await input.provider.generate(
@@ -126,8 +138,12 @@ export const prepareAssistantTurn = async (
         }
     );
 
+    console.log('rawDecision', rawDecision);
+
     const parsedDecision = parseModelJson<ToolDecision>(rawDecision);
     const decision = normalizeToolDecision(parsedDecision, input.toolChoice);
+
+    console.log('normalized decision', { parsedDecision, decision });
 
     if (decision.mode === 'direct' || !decision.toolName) {
         return {
@@ -160,6 +176,8 @@ export const prepareAssistantTurn = async (
         requestId: input.requestId,
         now: new Date().toISOString()
     });
+
+    console.log('tool execution result', { toolName: decision.toolName, result });
 
     if (!result.ok) {
         return {

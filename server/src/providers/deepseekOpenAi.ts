@@ -23,6 +23,7 @@ export const createDeepSeekProvider = (opts: {
     return {
         name: 'deepseek',
         model: opts.model,
+        /** 一次性生成 用于工具决策 */
         async generate({ messages, responseFormat, temperature }: ProviderGenerateInput, { signal }) {
             const response = await client.chat.completions.create({
                 model: opts.model,
@@ -45,6 +46,7 @@ export const createDeepSeekProvider = (opts: {
 
             throw err;
         },
+        /** 流式生成 用于最终答辩 */
         async *stream({ messages, temperature }: ProviderStreamInput, { signal }) {
             const stream = await client.chat.completions.create(
                 {

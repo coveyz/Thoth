@@ -8,9 +8,11 @@ type StreamCallbacks = {
   onPing?: (p: SSEPing) => void;
   onDone?: (p: SSEDone) => void;
   onError?: (p: SSEError) => void;
-
+  /** 记录工具调用 */
   onToolCall?: (p: SSEToolCall) => void
+  /** 记录工具结果 */
   onToolResult?: (p: SSEToolResult) => void
+  /** 记录工具错误 */
   onToolError?: (p: SSEToolError) => void
 };
 

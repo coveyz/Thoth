@@ -108,7 +108,7 @@ export function chatRouter(env: Env) {
 
         try {
             // Week1 收到用户消息直接 provider.stream
-            // week2 先经过编排 决定是否执行工具，并生成最终回答上下文
+            // week2 先经过编排 决定是否执行工具，并生成最终回答上下文 核心编排
             const prepared = await prepareAssistantTurn({
                 provider,
                 userMessage: message.trim(),
@@ -116,6 +116,8 @@ export function chatRouter(env: Env) {
                 signal: upstreamAbort.signal,
                 toolChoice
             })
+
+            console.log(`[${requestId}] prepared turn:`, prepared);
 
             if (clientClosed) return;
 
