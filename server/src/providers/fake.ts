@@ -12,6 +12,21 @@ const getLastUserMessage = (message: ProviderMessage[]) => {
 const buildFakeFinalAnswer = (messages: ProviderMessage[]) => {
     const lastUser = getLastUserMessage(messages);
 
+
+    if (lastUser.includes('可用 sources')) {
+        return [
+            '这是 fake provider 的 RAG 会发。',
+            '',
+            '我看到了本轮次传入的 sources，并会假装基于 sources 回答。',
+            '',
+            lastUser,
+            '',
+            '(Week3 fake rag final answer)',
+            ''
+        ].join('\n');
+    }
+
+
     if (lastUser.includes('工具结果')) {
         return `我已经读取了工具结果，并基于工具结果生成最终回答。\n\n${lastUser}\n\n(Week2 fake final answer)\n`;
     };

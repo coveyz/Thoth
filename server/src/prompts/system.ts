@@ -1,6 +1,7 @@
 import { prettyJson } from '../lib/json';
 
 import type { ProviderMessage } from '../providers/types';
+import type { RagSource } from '../rag/types';
 import type { ToolDefinition, ToolName } from '../tools/types';
 
 /** 定义 请求里工具调用的控制策略 */
@@ -176,3 +177,52 @@ export const buildToolErrorFallbackMessages = (params: {
         }
     ]
 };
+
+/** 构建 RAG 最终回答 messages */
+export const buildRagAnswerMessage = (params: {
+    userMessage: string;
+    sources: RagSource[];
+}): ProviderMessage[] => {
+    const hasSources = params.sources && params.sources.length > 0;
+
+    const renderedSources = hasSources
+        ? params.sources.map((source, index) => {
+            return [
+                `[source ${index + 1}]`,
+                `id: ${source.id}`,
+                `title: ${source.title}`,
+                `source: ${source.source}`,
+                `score: ${source.score}`,
+                `content:`,
+                source.content
+            ].join('\n');
+        })
+            .join('\n\n')
+        : '本轮没有检索到任何相关文档片段';
+
+
+    return [
+        {
+            role: 'system',
+            content: [
+                '你是 Thoth 的 RAG 文档问答助手。',
+                '你必须优先基于提供的 sources 回答用户问题。',
+                '如果 sources 中没有覆盖用户问题，不要编造答案，要明确说明“当前文档未覆盖这个问题”。',
+                '回答要使用中文，简洁、具体、可信。',
+                '如果使用了某个 source 的信息，请在回答中用 [source 1]、[source 2] 这样的形式标注依据。',
+            ].join('\n')
+        },
+        {
+            role: 'user',
+            content: [
+                '用户问题：',
+                params.userMessage,
+                '',
+                '可用 sources：',
+                renderedSources,
+                '',
+                '请基于 sources 回答用户问题'
+            ].join('\n')
+        }
+    ]
+}

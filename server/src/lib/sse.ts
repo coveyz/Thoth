@@ -12,6 +12,8 @@ import type { Response } from 'express';
  * - tool_call: { name, arguments, reason }
  * - tool_result: { name, ok: true, result }
  * - tool_error: { name?, message }
+ * - week3 SSE 协议
+ * - sources: { sources: RagSource[] }
  */
 export type SSEEventName =
     | 'start'
@@ -19,10 +21,10 @@ export type SSEEventName =
     | 'tool_result'
     | 'tool_error'
     | 'delta'
-    // | 'end'
     | 'ping'
     | 'done'
-    | 'error';
+    | 'error'
+    | 'sources';
 
 export function initSSE(res: Response) {
     // SSE 一般保持200 业务错误通过 event:error 告知前端

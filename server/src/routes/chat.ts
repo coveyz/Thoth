@@ -3,6 +3,7 @@ import { initSSE, writeEvent, endSSE, safeWriteEvent } from '../lib/sse';
 import { getProvider } from '../providers/index';
 import { isToolName } from '../tools';
 import { prepareAssistantTurn } from '../orchestrators/chatOrchestrators';
+import { prepareRagTurn } from '../orchestrators/ragOrchestrators';
 
 import type { Env } from '../lib/env';
 import type { ToolChoice } from '../prompts/system';
@@ -30,9 +31,9 @@ export function chatRouter(env: Env) {
         res.socket?.setNoDelay(true); // 立即发送数据，避免 Nagle 算法引起的延迟
         res.socket?.setKeepAlive(true); // 启用 TCP keep-alive，检测死连接
 
-
         const message = req.body?.message;
         const toolChoice = readToolChoice(req.body?.toolChoice);
+        const useRag = req.body?.rag === true;
 
         if (typeof message !== 'string' || !message.trim()) {
             await safeWriteEvent(res, 'error', {
@@ -107,6 +108,73 @@ export function chatRouter(env: Env) {
         let firstTokenTimer: ReturnType<typeof setTimeout> | null = null;
 
         try {
+
+            if (useRag) {
+                const prepared = prepareRagTurn({
+                    userMessage: message.trim(),
+                });
+                console.log(`[${requestId}] prepared RAG turn:${prepared}`);
+
+                if (clientClosed) return;
+
+                // 先把 sources 通过 SSE 提前给前端， 前端可以先展示 sources， 然后再展示最终回答
+                const ok = await safeWriteEvent(res, 'sources', {
+                    sources: prepared.sources
+                });
+
+                if (!ok) {
+                    clientClosed = true;
+                    upstreamAbort.abort();
+                    return;
+                }
+
+                firstTokenTimer = setTimeout(() => {
+                    if (clientClosed || gotAnyDelta) return;
+
+                    clientClosed = true;
+                    upstreamAbort.abort();
+
+                    safeWriteEvent(res, 'error', {
+                        code: "FIRST_TOKEN_TIMEOUT",
+                        message: `no token within ${env.THOTH_FIRST_TOKEN_TIMEOUT_MS}ms after rag retrieval`,
+                        requestId
+                    }).finally(() => {
+                        clearInterval(pingTimer);
+                        endSSE(res)
+                    })
+
+                }, env.THOTH_FIRST_TOKEN_TIMEOUT_MS);
+
+                for await (const delta of provider.stream(
+                    { messages: prepared.finalMessages, temperature: 0.2 },
+                    { signal: upstreamAbort.signal })
+                ) {
+                    if (clientClosed) break;
+
+                    gotAnyDelta = true;
+
+                    if (firstTokenTimer) {
+                        clearTimeout(firstTokenTimer);
+                        firstTokenTimer = null;
+                    };
+
+                    const ok = await safeWriteEvent(res, 'delta', delta);
+
+                    if (!ok) {
+                        clientClosed = true;
+                        upstreamAbort.abort();
+                        break;
+                    };
+                };
+
+                if (!clientClosed) {
+                    await safeWriteEvent(res, 'done', { ok: true });
+                    endSSE(res);
+                };
+
+                return;
+            }
+
             // Week1 收到用户消息直接 provider.stream
             // week2 先经过编排 决定是否执行工具，并生成最终回答上下文 核心编排
             const prepared = await prepareAssistantTurn({
