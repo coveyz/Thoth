@@ -9,6 +9,10 @@ export type Env = {
     THOTH_FIRST_TOKEN_TIMEOUT_MS: number;
     THOTH_OVERALL_TIMEOUT_MS: number;
     THOTH_PING_INTERVAL_MS: number;
+
+    THOTH_EMBEDDING_BASE_URL: string;
+    THOTH_EMBEDDING_API_KEY: string;
+    THOTH_EMBEDDING_MODEL: string;
 };
 
 function num(name: string, fallback: number) {
@@ -33,5 +37,9 @@ export function loadEnv(): Env {
         THOTH_FIRST_TOKEN_TIMEOUT_MS: num('THOTH_FIRST_TOKEN_TIMEOUT_MS', 10000),
         THOTH_OVERALL_TIMEOUT_MS: num('THOTH_OVERALL_TIMEOUT_MS', 60000),
         THOTH_PING_INTERVAL_MS: num('THOTH_PING_INTERVAL_MS', 15000),
+
+        THOTH_EMBEDDING_BASE_URL: process.env.THOTH_EMBEDDING_BASE_URL || 'https://api.openai.com/v1',
+        THOTH_EMBEDDING_API_KEY: process.env.THOTH_EMBEDDING_API_KEY || '',
+        THOTH_EMBEDDING_MODEL: process.env.THOTH_EMBEDDING_MODEL || 'text-embedding-3-small',
     }
 }

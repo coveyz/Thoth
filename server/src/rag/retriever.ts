@@ -1,57 +1,57 @@
 import { ragDocuments } from './document';
+import { embedTexts } from './embedding';
+import { cosineSimilarity } from './similarity';
+import type { Env } from '../lib/env';
 import type { RagSearchResult, RagSource } from './types';
 
-/**
- * 阶段1: 简单的基于文本包含的检索， 英文按照单词切，中文暴力命中，过滤最短
+/** 
+ * 文档内容不会频繁变化， 内存中缓存向量
+ * 第一次 RAG 请求会计算， 后期请求直接复用
  */
-const tokenize = (text: string): string[] => {
-    return text.toLocaleLowerCase()
-        .split(/[\s,，。.!！？?、:：;；()[\]{}"'`]+/)
-        .map(word => word.trim())
-        .filter(word => word.length >= 2);
-}
+let documentEmbeddingsPromise: Promise<number[][]> | null = null;
 
-/** 计算文档片段和用户问题的相关分数 */
-const scoreDocument = (query: string, sourceText: string): number => {
-    const normalizedQuery = query.toLocaleLowerCase().trim();
-    const normalizedSource = sourceText.toLocaleLowerCase();
-    const tokens = tokenize(normalizedQuery);
-    
-    let source = 0;
+const getDocumentEmbeddings = (
+    env: Env
+): Promise<number[][]> => {
+    if (!documentEmbeddingsPromise) {
+        const texts = ragDocuments.map(document => {
+            return [
+                document.title,
+                document.source,
+                document.content
+            ].join('\n');
+        });
 
-    for (const token of tokens) {
-        if (normalizedSource.includes(token)) {
-            source += 1;
-        };
+        documentEmbeddingsPromise = embedTexts(texts, env).catch((error) => {
+            documentEmbeddingsPromise = null; // Reset the promise on error to allow retrying
+            throw error;
+        })
     };
 
-    if (normalizedQuery && normalizedSource.includes(normalizedQuery)) {
-        source += 2;
-    }
-
-    return source;
+    return documentEmbeddingsPromise;
 }
 
 /** 检索 TopK文档片段 */
-export const retrieveSources = (query: string, topK = 3): RagSearchResult => {
-    const scoredSources: RagSource[] = ragDocuments.map(doc => {
-        const searchableText = [
-            doc.title,
-            doc.source,
-            doc.content
-        ].join('\n');
+export const retrieveSources = async (
+    query: string,
+    env: Env,
+    topK = 3
+): Promise<RagSearchResult> => {
 
-        return {
-            ...doc,
-            score: scoreDocument(query, searchableText)
-        }
-    })
-    .filter((doc) => doc.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK);
+    const [queryEmbedding] = await embedTexts([query], env);
+    const documentEmbeddings = await getDocumentEmbeddings(env);
 
+    const sources: RagSource[] = ragDocuments
+        .map((document, index) => {
+            return {
+                ...document,
+                score: cosineSimilarity(queryEmbedding, documentEmbeddings[index]),
+            }
+        })
+        .sort((a,b) => b.score - a.score)
+        .slice(0, topK);
 
     return {
-        sources: scoredSources
+        sources
     }
 }

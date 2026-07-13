@@ -1,11 +1,12 @@
 import { retrieveSources } from "../rag/retriever";
-
+import { buildRagAnswerMessage } from "../prompts/system";
 import type { ProviderMessage } from "../providers/types";
 import type { RagSource } from "../rag/types";
-import { buildRagAnswerMessage } from "../prompts/system";
+import type { Env } from "../lib/env";
 
 type PrepareRagTurnInput = {
     userMessage: string;
+    env: Env;
 }
 
 
@@ -22,10 +23,10 @@ export type PrepareRagTurnOutput = {
  *  2. 得到sources
  *  3. 组装 RAG prompt
  */
-export const prepareRagTurn = (
+export const prepareRagTurn = async (
     input: PrepareRagTurnInput
-): PrepareRagTurnOutput => {
-    const { sources } = retrieveSources(input.userMessage, 3)
+): Promise<PrepareRagTurnOutput> => {
+    const { sources } = await retrieveSources(input.userMessage, input.env, 3);
 
     return {
         sources,

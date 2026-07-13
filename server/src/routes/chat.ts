@@ -110,8 +110,9 @@ export function chatRouter(env: Env) {
         try {
 
             if (useRag) {
-                const prepared = prepareRagTurn({
+                const prepared = await prepareRagTurn({
                     userMessage: message.trim(),
+                    env
                 });
                 console.log(`[${requestId}] prepared RAG turn:${prepared}`);
 

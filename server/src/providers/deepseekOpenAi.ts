@@ -1,4 +1,4 @@
-import OpenAi from 'openai';
+import OpenAI from 'openai';
 
 import type { Provider, ProviderGenerateInput, ProviderMessage, ProviderStreamInput } from './types';
 
@@ -15,7 +15,7 @@ export const createDeepSeekProvider = (opts: {
     apiKey: string;
     model: string;
 }): Provider => {
-    const client = new OpenAi({
+    const client = new OpenAI({
         baseURL: opts.baseUrl.replace(/\/+$/, ''), // 去除末尾斜杠
         apiKey: opts.apiKey.trim(),
     });
