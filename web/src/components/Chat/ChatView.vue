@@ -7,6 +7,7 @@ import Composer from './Composer.vue';
 import ErrorBanner from './ErrorBanner.vue';
 import MessageList from './MessageList.vue';
 import ToolTimeline from './ToolTimeline.vue';
+import SourcesPanel from './SourcesPanel.vue';
 
 const chat = useChatStore();
 
@@ -43,9 +44,17 @@ const toolChoiceText = computed(() => {
 
     <ErrorBanner v-if="chat.errorText" :text="chat.errorText" @close="chat.clearError" />
     <MessageList :messages="chat.messages" :status="chat.status" />
+
+    <SourcesPanel
+      :sources="chat.activeTurn?.sources ?? []"
+    />
+
     <ToolTimeline :turns="chat.turns" />
     <Composer :disabled="chat.isBusy" :canStop="chat.status === 'streaming'" :toolChoice="chat.toolChoice"
-      @send="chat.send" @stop="chat.stop" @update:toolChoice="chat.setToolChoice" />
+      :ragEnabled="chat.ragEnabled"
+      @send="chat.send" @stop="chat.stop" @update:toolChoice="chat.setToolChoice"
+        @update:ragEnabled="chat.setRagEnabled"
+      />
   </div>
 </template>
 

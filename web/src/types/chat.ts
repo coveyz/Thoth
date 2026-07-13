@@ -2,6 +2,7 @@ export type Role = 'user' | 'assistant';
 export type ChatMessage = { id: string; role: Role; content: string; };
 
 export type SSEEventName = 'start' | 'delta' | 'ping' | 'done' | 'error' |
+  'sources' |
   'tool_call' |
   'tool_result' |
   'tool_error';
@@ -75,4 +76,20 @@ export type ChatTurnTrace = {
   doneReason?: SSEDone['reason'];
   errorText?: string;
   events: ToolTimeLineEvent[];
+  rag: boolean;
+  sources: RagSource[];
 }
+
+export type RagSource = {
+  id: string;
+  documentId: string;
+  title: string;
+  source: string;
+  chunkIndex: number;
+  content: string;
+  score: number;
+};
+
+export type SSERagSource = {
+  sources: RagSource[];
+};

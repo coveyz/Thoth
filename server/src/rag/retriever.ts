@@ -4,6 +4,10 @@ import { cosineSimilarity } from './similarity';
 import type { Env } from '../lib/env';
 import type { RagSearchResult, RagSource } from './types';
 
+
+/** 阶段5目标，命中相关文档时，正常返回sources，问题明显不在时 不硬塞 */
+const MIN_RAG_SCORE = 0.55;
+
 /** 
  * 文档内容不会频繁变化， 内存中缓存向量
  * 第一次 RAG 请求会计算， 后期请求直接复用
@@ -49,6 +53,7 @@ export const retrieveSources = async (
             }
         })
         .sort((a,b) => b.score - a.score)
+        .filter(source => source.score >= MIN_RAG_SCORE)
         .slice(0, topK);
 
     return {

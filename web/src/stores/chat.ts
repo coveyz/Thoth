@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import { streamChat } from '@/api/apiStream';
-import type { ChatMessage, ChatTurnTrace, SSEDone, SSEError, SSEStart, SSEToolCall, SSEToolError, SSEToolResult, ToolChoice } from '@/types/chat';
+import type { ChatMessage, ChatTurnTrace, SSEDone, SSEError, SSEStart, SSEToolCall, SSEToolError, SSEToolResult, SSERagSource, ToolChoice } from '@/types/chat';
 
 type Status = 'idle' | 'streaming' | 'stopping' | 'error';
 
@@ -24,15 +24,9 @@ export const useChatStore = defineStore('chat', () => {
 
   const status = ref<Status>('idle');
   const errorText = ref<string>('');
-
-  // week1： 单会话 week2 再拓展多会话列表
   const conversationId = ref('default');
-
-  /**
-   * week1: 随便指定模型
-   * week2: 这里会变成“可选模型列表 + 当前选中模型”，真正实现切大模型。
-   */
   const model = ref('');
+  const ragEnabled = ref(false);
 
   const toolChoice = ref<ToolChoice>('auto');
   const controller = ref<AbortController | null>(null);
@@ -75,11 +69,13 @@ export const useChatStore = defineStore('chat', () => {
   };
 
   /** 新建一轮 trace， 新一轮用户输入， 工具策略，后续工具事件都归到这里 */
-  const createTurn = (userText: string) => {
+  const createTurn = (userText: string, rag: boolean) => {
     const turn: ChatTurnTrace = {
       id: makeId(),
       userText,
       toolChoice: toolChoice.value,
+      rag,
+      sources: [],
       createdAt: Date.now(),
       outcome: 'pending',
       events: []
@@ -138,6 +134,16 @@ export const useChatStore = defineStore('chat', () => {
     toolChoice.value = value;
   }
 
+  const markSources = (payload: SSERagSource) => {
+    updateActiveTurn(turn => {
+      turn.sources = payload.sources;
+    });
+  };
+
+  const setRagEnabled = (value: boolean) => {
+    ragEnabled.value = value;
+  };
+
   const send = async (text: string) => {
     const content = text.trim();
     if (!content) return;
@@ -147,7 +153,7 @@ export const useChatStore = defineStore('chat', () => {
     status.value = 'streaming';
 
     pushUser(content);
-    createTurn(content);
+    createTurn(content, ragEnabled.value);
     ensureAssistant();
 
     controller.value = new AbortController();
@@ -158,6 +164,7 @@ export const useChatStore = defineStore('chat', () => {
         model: model.value || undefined,
         toolChoice: toolChoice.value,
         signal: controller.value.signal,
+        rag: ragEnabled.value,
         callbacks: {
           onStart: (payload) => {
             startInfo = payload
@@ -182,6 +189,9 @@ export const useChatStore = defineStore('chat', () => {
           onDone: (payload) => {
             markDone(payload)
             if (status.value !== 'error') status.value = 'idle';
+          },
+          onSources: (payload) => {
+            markSources(payload);
           }
         }
       })
@@ -240,5 +250,7 @@ export const useChatStore = defineStore('chat', () => {
     send,
     stop,
     clearError,
+    ragEnabled,
+    setRagEnabled
   };
 })

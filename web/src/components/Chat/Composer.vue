@@ -8,11 +8,13 @@ const props = defineProps<{
   disabled: boolean,
   canStop: boolean,
   toolChoice: ToolChoice
+  ragEnabled: boolean
 }>();
 const emit = defineEmits<{
   send: [text: string],
   stop: [],
-  'update:toolChoice': [value: ToolChoice]
+  'update:toolChoice': [value: ToolChoice],
+  'update:ragEnabled': [value: boolean]
 }>();
 
 const input = ref('');
@@ -36,6 +38,11 @@ const updateToolChoice = (event: Event) => {
   emit('update:toolChoice', target.value as ToolChoice);
 }
 
+const updateRagEnabled = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  emit('update:ragEnabled', target.checked);
+};
+
 </script>
 
 <template>
@@ -48,6 +55,10 @@ const updateToolChoice = (event: Event) => {
             {{ option.label }}
           </option>
         </select>
+      </label>
+      <label class="rag-toggle">
+        <input type="checkbox" :checked="props.ragEnabled" :disabled="props.disabled" @change="updateRagEnabled" />
+        <span>RAG</span>
       </label>
     </div>
 
@@ -77,7 +88,8 @@ const updateToolChoice = (event: Event) => {
   gap: 10px;
 }
 
-.controls, .actions {
+.controls,
+.actions {
   display: flex;
   align-items: center;
   gap: 8px
@@ -88,11 +100,13 @@ const updateToolChoice = (event: Event) => {
   align-items: center;
   gap: 8px
 }
-.tool-label{
+
+.tool-label {
   font-size: 12px;
   color: #374151;
   font-weight: 800;
 }
+
 .select {
   min-width: 190px;
   padding: 8px 10px;
@@ -132,15 +146,27 @@ const updateToolChoice = (event: Event) => {
   color: #fff;
 }
 
+.rag-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #374151;
+  font-weight: 800;
+}
+
 @media (max-width: 720px) {
   .actions {
     flex-wrap: wrap;
   }
+
   .tool-choice {
     width: 100%;
     justify-content: space-between;
   }
-  .select, input {
+
+  .select,
+  input {
     width: 100%;
   }
 }

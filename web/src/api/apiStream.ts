@@ -1,5 +1,5 @@
 import type {
-  SSEStart, SSEPing, SSEDone, SSEError, SSEToolCall, SSEToolError, SSEToolResult, ToolChoice,
+  SSEStart, SSEPing, SSEDone, SSEError, SSEToolCall, SSEToolError, SSEToolResult, ToolChoice, SSERagSource
 } from '@/types/chat';
 
 type StreamCallbacks = {
@@ -14,6 +14,8 @@ type StreamCallbacks = {
   onToolResult?: (p: SSEToolResult) => void
   /** 记录工具错误 */
   onToolError?: (p: SSEToolError) => void
+  /** 记录RAG来源 */
+  onSources?: (p: SSERagSource) => void;
 };
 
 /**
@@ -26,8 +28,9 @@ export const streamChat = async (args: {
   toolChoice?: ToolChoice,
   signal: AbortSignal,
   callbacks: StreamCallbacks,
+  rag?: boolean
 }) => {
-  const { message, model, toolChoice, signal, callbacks } = args;
+  const { message, model, toolChoice, rag, signal, callbacks } = args;
 
   const resp = await fetch('/api/chat/stream', {
     method: 'POST',
@@ -35,7 +38,7 @@ export const streamChat = async (args: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
     },
-    body: JSON.stringify({ message, model, toolChoice }),
+    body: JSON.stringify({ message, model, toolChoice, rag }),
     signal,
   });
 
@@ -89,6 +92,7 @@ export const streamChat = async (args: {
         if (eventName === 'ping') callbacks.onPing?.(obj);
         if (eventName === 'done') callbacks.onDone?.(obj);
         if (eventName === 'error') callbacks.onError?.(obj);
+        if (eventName === 'sources') callbacks.onSources?.(obj);
       } catch (error) {
         callbacks.onError?.({
           code: 'BAD_EVENT',
