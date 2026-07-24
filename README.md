@@ -1,6 +1,22 @@
 # Thoth
 
-## 路线图（4 周）
+## 路线图
+
+Thoth 的当前目标是从一个学习型 AI Chat 项目，逐步升级为一个更真实的知识库问答助手：
+
+```text
+聊天 MVP
+-> 工具调用
+-> 最小 RAG 闭环
+-> 工程化回归
+-> 文档接入
+-> 向量持久化
+-> 检索质量优化
+-> 权限安全与观测
+-> 产品展示收口
+```
+
+### 已完成
 
 ### 第 1 周：聊天 MVP（流式体验优先）
 
@@ -44,104 +60,154 @@
 
 **一句话**：本周让 Thoth “通晓你的资料”。
 
-### RAG 后续：生产级知识库系统路线
+### 后续计划：从最小 RAG 到生产级知识库系统
 
-Week3 已完成最小可用 RAG 闭环。后续如果要从学习项目走向更真实的知识库系统，可以按以下层次推进。
+Week3 已完成最小可用 RAG 闭环。后续不再把“工程化”和“RAG 后续”分成两条线，而是按 Week4 - Week9 逐步推进。
 
-#### 1. 文档接入层
+### 第 4 周：回归体系 + 工程化底座
 
-- [ ] 支持 Markdown / TXT 文档导入
-- [ ] 支持 PDF / 网页内容解析
-- [ ] 支持文档标题、来源、作者、更新时间等 metadata
-- [ ] 支持文档新增、更新、删除
-- [ ] 支持文档版本记录
-- [ ] 支持文档解析失败时的错误记录
+**本周目标**：让 Week1 - Week3 的能力不只是“能跑”，而是可以稳定验证、可以定位问题。
 
-#### 2. 索引构建层
+**阶段拆分**
 
-- [ ] 文档入库时异步 chunk
-- [ ] 文档入库时异步 embedding
-- [ ] 支持 embedding batch，避免一次请求过多 texts
-- [ ] 支持索引重建
-- [ ] 支持增量索引更新
-- [ ] 支持索引状态：pending / indexing / ready / failed
+- [ ] 阶段 1：整理普通聊天、工具调用、RAG 命中、RAG no-hit、停止、超时等验收用例
+- [ ] 阶段 2：建立最小回归题库，覆盖 Week1 - Week3 主链路
+- [ ] 阶段 3：统一错误码和错误展示
+- [ ] 阶段 4：记录 requestId、latency、provider、model
+- [ ] 阶段 5：整理 env 配置和启动说明
+- [ ] 阶段 6：补一份 Week4 checklist
 
-#### 3. 向量存储层
+**完成标准**
 
-- [ ] 从内存缓存升级为持久化向量存储
-- [ ] 可选方案：Postgres + pgvector
-- [ ] 可选方案：Qdrant / Milvus / Pinecone
-- [ ] 保存 chunk text、embedding、metadata、documentId
-- [ ] 支持按 userId / workspaceId / documentId 过滤
-- [ ] 支持删除文档时同步删除向量
+- [ ] 普通聊天可以回归
+- [ ] 工具调用可以回归
+- [ ] RAG 命中可以回归
+- [ ] RAG no-hit 可以回归
+- [ ] 停止和超时路径可以验证
+- [ ] 出错时能通过 requestId 和日志定位
 
-#### 4. 检索质量层
+**一句话**：本周先把 Thoth 变得可验证。
 
-- [ ] 支持 TopK 参数配置
-- [ ] 支持 score threshold 配置
-- [ ] 支持 hybrid search：关键词 + 向量
-- [ ] 支持 metadata filter
-- [ ] 支持 query rewrite
-- [ ] 支持 multi-query retrieval
-- [ ] 支持 reranker 二次排序
-- [ ] 支持 source 去重和相邻 chunk 合并
+### 第 5 周：文档接入 + 索引构建
 
-#### 5. Prompt 与防幻觉层
+**本周目标**：不再把知识库写死在 `document.ts`，开始支持真实文档接入和索引构建。
 
-- [ ] 强化 no-hit 回答规范
-- [ ] 要求回答必须引用 source id
-- [ ] 对 sources 做长度裁剪，避免 prompt 过长
-- [ ] 防止文档中的 prompt injection
-- [ ] 区分“文档未覆盖”和“模型无法判断”
-- [ ] 支持回答置信度或依据说明
+**阶段拆分**
 
-#### 6. 前端体验层
+- [ ] 阶段 1：设计文档 metadata：id、title、source、path、updatedAt
+- [ ] 阶段 2：支持读取本地 Markdown / TXT 文档
+- [ ] 阶段 3：把 `rawRagDocuments` 从代码写死改成从文件加载
+- [ ] 阶段 4：文档 chunk 后生成可检索 index
+- [ ] 阶段 5：embedding 支持 batch，避免一次请求过多 texts
+- [ ] 阶段 6：支持索引状态：pending / indexing / ready / failed
+- [ ] 阶段 7：支持索引重建
 
-- [ ] sources 折叠 / 展开
-- [ ] 高亮命中片段
-- [ ] 点击 source 跳转原文
-- [ ] 回答引用编号和 source 面板联动
-- [ ] 展示检索分数和来源 metadata
-- [ ] 支持用户反馈：有用 / 无用 / source 错误
+**完成标准**
 
-#### 7. 权限与安全层
+- [ ] 新增一个 Markdown / TXT 文件后，RAG 能检索到
+- [ ] 修改文档后，可以重建索引
+- [ ] 删除文档后，不再命中旧内容
+- [ ] sources 能展示文档 metadata
 
-- [ ] 多用户 / 多 workspace 隔离
-- [ ] 检索时按权限过滤文档
-- [ ] 日志中避免记录敏感原文
-- [ ] 支持 PII / secret 脱敏
-- [ ] 支持上传文件大小和类型限制
-- [ ] 支持恶意文档内容防护
+**一句话**：本周让知识可以从文件进入 Thoth。
 
-#### 8. 评估与回归层
+### 第 6 周：向量存储 + 持久化检索
 
-- [ ] 建立 RAG 回归题库
-- [ ] 覆盖命中、低命中、无命中、歧义问题
-- [ ] 记录期望 source
-- [ ] 记录期望回答要点
-- [ ] 评估 retrieval hit rate
-- [ ] 评估 answer groundedness
-- [ ] 每次改 chunk / embedding / threshold 后跑回归
+**本周目标**：从内存缓存升级到真实向量存储，让文档向量可以持久化。
 
-#### 9. 可观测性与成本层
+**阶段拆分**
 
-- [ ] 记录 requestId、latency、provider、model
-- [ ] 记录 embedding 请求次数和 token / 字符量
-- [ ] 记录 retrieved source ids 和 scores
-- [ ] 记录 no-hit 比例
-- [ ] 记录 provider 错误类型
-- [ ] 支持超时、重试、限流
-- [ ] 支持成本粗略统计
+- [ ] 阶段 1：选择向量存储方案，优先考虑 Postgres + pgvector
+- [ ] 阶段 2：设计 `documents` 表
+- [ ] 阶段 3：设计 `chunks` 表
+- [ ] 阶段 4：保存 chunk text、embedding、metadata、documentId
+- [ ] 阶段 5：查询时只 embedding 用户问题
+- [ ] 阶段 6：用数据库完成 TopK 检索
+- [ ] 阶段 7：支持删除文档时同步删除向量
+- [ ] 阶段 8：支持重建索引
 
-### 第 4 周：工程化上线底线（质量/安全/回归）
+**完成标准**
 
-**本周目标**：把应用变得更可靠：成本意识、权限隔离雏形、安全底线、可回归。
+- [ ] server 重启后，不需要重新 embedding 全部文档
+- [ ] TopK sources 从数据库返回
+- [ ] 文档更新后能重建对应 chunks 和 embeddings
+- [ ] 检索仍然返回可追溯 sources
 
-**本周交付/验收**
+**一句话**：本周让知识库从内存 demo 走向持久化系统。
 
-- [ ] 基础多会话隔离（至少 sessionId 级别；有条件做到 userId）
-- [ ] 成本与稳定性：超时/重试策略、token 统计（粗略也行）
-- [ ] 基础安全：PII 提示、最小化日志、RAG 防提示注入的基本约束
-- [ ] 回归题库：至少 20 条问答用例（手动/脚本都可），跑一次能验证核心功能
+### 第 7 周：检索质量优化 + RAG Eval
 
-**一句话**：本周把它做成“别人能 clone 运行 + 你敢拿去展示”的项目。
+**本周目标**：让 RAG 不只是能搜，而是能评估、能调优、知道错在哪里。
+
+**阶段拆分**
+
+- [ ] 阶段 1：建立 RAG eval 题库
+- [ ] 阶段 2：每题记录 expected sources
+- [ ] 阶段 3：每题记录 expected answer points
+- [ ] 阶段 4：评估 retrieval hit rate
+- [ ] 阶段 5：评估 answer groundedness
+- [ ] 阶段 6：调 chunkSize / overlap / MIN_RAG_SCORE
+- [ ] 阶段 7：尝试 hybrid search：关键词 + 向量
+- [ ] 阶段 8：可选增加 reranker 二次排序
+- [ ] 阶段 9：支持 source 去重和相邻 chunk 合并
+
+**完成标准**
+
+- [ ] 每次改检索逻辑后，可以看到命中率变化
+- [ ] 能区分 retrieval 错还是 generation 错
+- [ ] no-hit 和低命中场景有稳定判断
+- [ ] sources 排序质量可被回归题库验证
+
+**一句话**：本周让 Thoth 的 RAG 质量可衡量。
+
+### 第 8 周：权限安全 + 成本观测
+
+**本周目标**：补真实系统边界：谁能搜什么、花了多少钱、哪里出错了。
+
+**阶段拆分**
+
+- [ ] 阶段 1：引入 userId / workspaceId
+- [ ] 阶段 2：文档按 workspace 隔离
+- [ ] 阶段 3：检索时按权限过滤文档
+- [ ] 阶段 4：日志最小化，避免记录敏感原文
+- [ ] 阶段 5：支持 PII / secret 脱敏策略
+- [ ] 阶段 6：增加 RAG prompt injection 防护
+- [ ] 阶段 7：记录 embedding / chat 调用次数
+- [ ] 阶段 8：记录 latency、error、no-hit 比例
+- [ ] 阶段 9：支持基础限流和重试策略
+
+**完成标准**
+
+- [ ] A 用户不能检索 B 用户文档
+- [ ] 敏感内容不被随意打进日志
+- [ ] provider 错误可定位
+- [ ] embedding 和 chat 调用量可粗略统计
+- [ ] 常见超时、限流、上游失败有稳定提示
+
+**一句话**：本周让 Thoth 接近真实业务系统的安全和观测边界。
+
+### 第 9 周：产品体验 + 项目展示收口
+
+**本周目标**：把项目打磨成可以演示、可以交给别人 clone 运行的知识库助手。
+
+**阶段拆分**
+
+- [ ] 阶段 1：文档管理页面
+- [ ] 阶段 2：索引状态展示
+- [ ] 阶段 3：sources 折叠 / 展开
+- [ ] 阶段 4：source 点击跳转原文
+- [ ] 阶段 5：命中片段高亮
+- [ ] 阶段 6：回答引用编号和 source 面板联动
+- [ ] 阶段 7：用户反馈：有用 / 无用 / source 错误
+- [ ] 阶段 8：README 完整化
+- [ ] 阶段 9：演示脚本和最终回归
+
+**完成标准**
+
+- [ ] 别人 clone 项目后知道怎么启动
+- [ ] 知道怎么导入文档
+- [ ] 知道怎么测试 RAG
+- [ ] 能看到索引状态和 sources
+- [ ] 能完整演示一条知识库问答链路
+
+**一句话**：本周把 Thoth 做成一个能展示的 AI 知识库项目。
