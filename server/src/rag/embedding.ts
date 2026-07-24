@@ -4,7 +4,8 @@ import type { Env } from '../lib/env';
 
 /** 
  * 多段文本转换成向量
- * 文档 chunks 可以批量发送，减少http请求次数
+ * - 文档 chunks 可以批量发送，减少http请求次数
+ * - 文本数组 -> 向量数组
  */
 export const embedTexts = async (
     texts: string[],

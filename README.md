@@ -36,12 +36,102 @@
 
 **本周交付/验收**
 
-- [ ] 文档切分（chunk + overlap）+ embedding
-- [ ] 相似度检索 TopK + 拼 prompt
-- [ ] 返回并展示 sources（引用片段/来源）
-- [ ] 无命中/低相似度时：明确拒答或提示“文档未覆盖”（降幻觉）
+- [x] 文档切分（chunk + overlap）+ embedding
+- [x] 相似度检索 TopK + 拼 prompt
+- [x] 返回并展示 sources（引用片段/来源）
+- [x] 无命中/低相似度时：明确拒答或提示“文档未覆盖”（降幻觉）
+- [x] 冒烟用例记录见 [WEEK3_CHECKLIST.md](WEEK3_CHECKLIST.md)
 
 **一句话**：本周让 Thoth “通晓你的资料”。
+
+### RAG 后续：生产级知识库系统路线
+
+Week3 已完成最小可用 RAG 闭环。后续如果要从学习项目走向更真实的知识库系统，可以按以下层次推进。
+
+#### 1. 文档接入层
+
+- [ ] 支持 Markdown / TXT 文档导入
+- [ ] 支持 PDF / 网页内容解析
+- [ ] 支持文档标题、来源、作者、更新时间等 metadata
+- [ ] 支持文档新增、更新、删除
+- [ ] 支持文档版本记录
+- [ ] 支持文档解析失败时的错误记录
+
+#### 2. 索引构建层
+
+- [ ] 文档入库时异步 chunk
+- [ ] 文档入库时异步 embedding
+- [ ] 支持 embedding batch，避免一次请求过多 texts
+- [ ] 支持索引重建
+- [ ] 支持增量索引更新
+- [ ] 支持索引状态：pending / indexing / ready / failed
+
+#### 3. 向量存储层
+
+- [ ] 从内存缓存升级为持久化向量存储
+- [ ] 可选方案：Postgres + pgvector
+- [ ] 可选方案：Qdrant / Milvus / Pinecone
+- [ ] 保存 chunk text、embedding、metadata、documentId
+- [ ] 支持按 userId / workspaceId / documentId 过滤
+- [ ] 支持删除文档时同步删除向量
+
+#### 4. 检索质量层
+
+- [ ] 支持 TopK 参数配置
+- [ ] 支持 score threshold 配置
+- [ ] 支持 hybrid search：关键词 + 向量
+- [ ] 支持 metadata filter
+- [ ] 支持 query rewrite
+- [ ] 支持 multi-query retrieval
+- [ ] 支持 reranker 二次排序
+- [ ] 支持 source 去重和相邻 chunk 合并
+
+#### 5. Prompt 与防幻觉层
+
+- [ ] 强化 no-hit 回答规范
+- [ ] 要求回答必须引用 source id
+- [ ] 对 sources 做长度裁剪，避免 prompt 过长
+- [ ] 防止文档中的 prompt injection
+- [ ] 区分“文档未覆盖”和“模型无法判断”
+- [ ] 支持回答置信度或依据说明
+
+#### 6. 前端体验层
+
+- [ ] sources 折叠 / 展开
+- [ ] 高亮命中片段
+- [ ] 点击 source 跳转原文
+- [ ] 回答引用编号和 source 面板联动
+- [ ] 展示检索分数和来源 metadata
+- [ ] 支持用户反馈：有用 / 无用 / source 错误
+
+#### 7. 权限与安全层
+
+- [ ] 多用户 / 多 workspace 隔离
+- [ ] 检索时按权限过滤文档
+- [ ] 日志中避免记录敏感原文
+- [ ] 支持 PII / secret 脱敏
+- [ ] 支持上传文件大小和类型限制
+- [ ] 支持恶意文档内容防护
+
+#### 8. 评估与回归层
+
+- [ ] 建立 RAG 回归题库
+- [ ] 覆盖命中、低命中、无命中、歧义问题
+- [ ] 记录期望 source
+- [ ] 记录期望回答要点
+- [ ] 评估 retrieval hit rate
+- [ ] 评估 answer groundedness
+- [ ] 每次改 chunk / embedding / threshold 后跑回归
+
+#### 9. 可观测性与成本层
+
+- [ ] 记录 requestId、latency、provider、model
+- [ ] 记录 embedding 请求次数和 token / 字符量
+- [ ] 记录 retrieved source ids 和 scores
+- [ ] 记录 no-hit 比例
+- [ ] 记录 provider 错误类型
+- [ ] 支持超时、重试、限流
+- [ ] 支持成本粗略统计
 
 ### 第 4 周：工程化上线底线（质量/安全/回归）
 

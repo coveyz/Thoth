@@ -9,6 +9,7 @@ import type { RagSearchResult, RagSource } from './types';
 const MIN_RAG_SCORE = 0.55;
 
 /** 
+ * 文档定向存量 🧭
  * 文档内容不会频繁变化， 内存中缓存向量
  * 第一次 RAG 请求会计算， 后期请求直接复用
  */
@@ -35,7 +36,15 @@ const getDocumentEmbeddings = (
     return documentEmbeddingsPromise;
 }
 
-/** 检索 TopK文档片段 */
+/** 检索 TopK文档片段
+ * 核心流程：
+ *  1. 给用户问题生成 queryEmbedding
+ *  2. 获取或有文档chunk 的 documentEmbedding
+ *  3. 每个 chunk 和 query 做 cosineSimilarity
+ *  4. 按照 从高到低排序
+ *  5. 过滤掉低于 MIN_RAG_SCORE 的 chunk
+ *  6. 截取 topK
+ */
 export const retrieveSources = async (
     query: string,
     env: Env,

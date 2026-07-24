@@ -1,10 +1,3 @@
-<!--
- * @Author: coveyz zhangkairong123@qq.com
- * @Date: 2026-03-18 21:22:43
- * @LastEditors: coveyz zhangkairong123@qq.com
- * @LastEditTime: 2026-03-19 18:16:56
- * @FilePath: /Thoth/web/src/components/chat/ErrorBanner.vue
--->
 <script setup lang="ts">
 /**
  * 组件职责：展示错误信息，并允许用户关闭。
