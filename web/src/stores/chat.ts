@@ -2,7 +2,8 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import { streamChat } from '@/api/apiStream';
-import type { ChatMessage, ChatTurnTrace, SSEDone, SSEError, SSEStart, SSEToolCall, SSEToolError, SSEToolResult, SSERagSource, ToolChoice } from '@/types/chat';
+import type { ChatMessage, ChatTurnTrace, SSEDone, SSEError, SSEStart, SSEToolCall, SSEToolError, SSEToolResult, SSERagSource, ToolChoice, ChatDisplayError } from '@/types/chat';
+import { toChatDisplayError, toUnexpectedChatError } from '@/lib/chatError';
 
 type Status = 'idle' | 'streaming' | 'stopping' | 'error';
 
@@ -23,7 +24,8 @@ export const useChatStore = defineStore('chat', () => {
   const turns = ref<ChatTurnTrace[]>([]);
 
   const status = ref<Status>('idle');
-  const errorText = ref<string>('');
+  const errorInfo = ref<ChatDisplayError | null>(null);
+
   const conversationId = ref('default');
   const model = ref('');
   const ragEnabled = ref(false);
@@ -123,10 +125,10 @@ export const useChatStore = defineStore('chat', () => {
     })
   };
 
-  const markError = (text: string) => {
+  const markError = (error: ChatDisplayError) => {
     updateActiveTurn(turn => {
       turn.outcome = 'error';
-      turn.errorText = text;
+      turn.error = error;
     })
   }
 
@@ -149,7 +151,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!content) return;
     if (!canSend.value) return;
 
-    errorText.value = '';
+    errorInfo.value = null;
     status.value = 'streaming';
 
     pushUser(content);
@@ -157,7 +159,6 @@ export const useChatStore = defineStore('chat', () => {
     ensureAssistant();
 
     controller.value = new AbortController();
-    let startInfo: SSEStart | null = null;
     try {
       await streamChat({
         message: content,
@@ -167,7 +168,6 @@ export const useChatStore = defineStore('chat', () => {
         rag: ragEnabled.value,
         callbacks: {
           onStart: (payload) => {
-            startInfo = payload
             markStarted(payload);
           },
           onToolCall: (payload) => {
@@ -183,8 +183,12 @@ export const useChatStore = defineStore('chat', () => {
           onDelta: (delta) => appendAssistantDelta(delta),
           onError: (error: SSEError) => {
             status.value = 'error'
-            errorText.value = `${error.code}: ${error.message} ${startInfo?.requestId ? startInfo.requestId : ''}`
-            markError(errorText.value);
+            const displayError = toChatDisplayError({
+              ...error,
+              requestId: error.requestId ?? activeTurn.value?.requestId
+            });
+            errorInfo.value = displayError;
+            markError(displayError);
           },
           onDone: (payload) => {
             markDone(payload)
@@ -201,14 +205,19 @@ export const useChatStore = defineStore('chat', () => {
         markDone({ ok: true });
         status.value = 'idle';
       }
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
         status.value = 'idle';
-        markDone({ ok: true, reason: 'stop' })
+        markDone({ ok: true, reason: 'stop' });
       } else {
         status.value = 'error';
-        errorText.value = error?.message ?? String(error);
-        markError(errorText.value);
+        const displayError = {
+          ...toUnexpectedChatError(error),
+          requestId: activeTurn.value?.requestId
+        };
+
+        errorInfo.value = displayError;
+        markError(displayError);
       };
     } finally {
       controller.value = null;
@@ -229,7 +238,7 @@ export const useChatStore = defineStore('chat', () => {
   };
 
   const clearError = () => {
-    errorText.value = '';
+    errorInfo.value = null;
     if (status.value === 'error') status.value = 'idle';
   };
 
@@ -237,7 +246,7 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     turns,
     status,
-    errorText,
+    errorInfo,
     conversationId,
     model,
     toolChoice,

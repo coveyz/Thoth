@@ -108,7 +108,6 @@ const normalizeToolDecision = (
 export const prepareAssistantTurn = async (
     input: PrepareAssistantTurnInput
 ): Promise<PrepareAssistantTurnOutput> => {
-    // console.log('prepareAssistantTurn', input);
 
     if (input.toolChoice === 'none') {
         return {
@@ -116,11 +115,6 @@ export const prepareAssistantTurn = async (
         }
     };
 
-    // console.log('messages=>', buildToolDecisionMessages(
-    //             input.userMessage,
-    //             listTools(),
-    //             input.toolChoice
-    //         ),)
 
     // 让模型输出 结构化 ToolDecision
     const rawDecision = await input.provider.generate(
@@ -138,12 +132,9 @@ export const prepareAssistantTurn = async (
         }
     );
 
-    console.log('rawDecision', rawDecision);
-
     const parsedDecision = parseModelJson<ToolDecision>(rawDecision);
     const decision = normalizeToolDecision(parsedDecision, input.toolChoice);
 
-    console.log('normalized decision', { parsedDecision, decision });
 
     if (decision.mode === 'direct' || !decision.toolName) {
         return {
@@ -176,8 +167,6 @@ export const prepareAssistantTurn = async (
         requestId: input.requestId,
         now: new Date().toISOString()
     });
-
-    console.log('tool execution result', { toolName: decision.toolName, result });
 
     if (!result.ok) {
         return {

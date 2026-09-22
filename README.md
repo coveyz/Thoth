@@ -1,5 +1,391 @@
 # Thoth
 
+Thoth 是一个学习型 AI Chat 与知识库问答项目，目前支持：
+
+- SSE 流式聊天
+- 停止生成
+- Fake / DeepSeek OpenAI-compatible Chat Provider
+- 本地工具调用
+- RAG 文档检索
+- Sources 引用展示
+- 统一错误码和前端错误提示
+- requestId 与结构化请求日志
+- 自动化回归测试
+
+## 本地开发
+
+### 1. 环境要求
+
+- Node.js `^20.19.0` 或 `>=22.12.0`
+- pnpm
+- 两个终端窗口：分别运行 Server 和 Web
+
+检查版本：
+
+```bash
+node --version
+pnpm --version
+```
+
+项目根目录目前不是 pnpm workspace，也没有根 `package.json`。
+
+因此不要在根目录直接运行：
+
+```bash
+pnpm install
+pnpm test
+pnpm dev
+```
+
+请通过 `-C` 指定子项目，或者进入对应目录后执行命令。
+
+---
+
+### 2. 安装依赖
+
+在项目根目录执行：
+
+```bash
+pnpm -C server install
+pnpm -C web install
+```
+
+也可以分别进入目录：
+
+```bash
+cd server
+pnpm install
+```
+
+```bash
+cd web
+pnpm install
+```
+
+---
+
+### 3. 创建 Server 配置
+
+从示例文件复制本地配置：
+
+```bash
+cp server/.env.example server/.env
+```
+
+`server/.env` 包含本地密钥，已经被 `.gitignore` 忽略。
+
+不要把真实 API Key 写入：
+
+```text
+server/.env.example
+```
+
+#### Fake Chat 模式
+
+默认 `.env.example` 中：
+
+```env
+THOTH_API_KEY=
+```
+
+Chat API Key 为空时，Server 自动使用 Fake Provider：
+
+- 不请求真实 Chat API
+- 不产生 Chat API 费用
+- 输出稳定
+- 适合本地开发和回归测试
+
+#### 真实 Chat 模式
+
+在 `server/.env` 中配置：
+
+```env
+THOTH_BASE_URL=https://api.deepseek.com
+THOTH_API_KEY=你的真实密钥
+THOTH_MODEL=deepseek-chat
+```
+
+保存后需要重启 Server。
+
+#### RAG Embedding 配置
+
+RAG 使用独立的 Embedding Provider：
+
+```env
+THOTH_EMBEDDING_BASE_URL=https://api.openai.com/v1
+THOTH_EMBEDDING_API_KEY=你的真实密钥
+THOTH_EMBEDDING_MODEL=text-embedding-3-small
+```
+
+也可以使用支持 OpenAI-compatible Embedding API 的其他 Provider。
+
+需要注意：
+
+> Fake Chat Provider 不包含运行时 Fake Embedding Provider。
+
+当 `THOTH_EMBEDDING_API_KEY` 为空时：
+
+- 普通聊天仍然可用
+- 工具调用仍然可用
+- 开启 RAG 会返回 `EMBEDDING_ERROR`
+
+自动测试中的 RAG 使用 Vitest Mock Embedding，不会调用真实 API。
+
+---
+
+### 4. 启动 Server
+
+终端一：
+
+```bash
+pnpm -C server dev
+```
+
+预期：
+
+```text
+[server] listening on http://localhost:3001
+```
+
+健康检查：
+
+```bash
+curl http://localhost:3001/healthz
+```
+
+预期：
+
+```json
+{"ok":true,"version":"0.1.0"}
+```
+
+每个请求结束时，Server 会输出一行结构化 JSON 日志，例如：
+
+```json
+{
+  "level": "info",
+  "event": "request.completed",
+  "requestId": "abcd",
+  "method": "GET",
+  "path": "/healthz",
+  "statusCode": 200,
+  "latencyMs": 2,
+  "outcome": "success"
+}
+```
+
+Chat 请求还会记录：
+
+- provider
+- model
+- rag
+- toolName
+- outcome
+- errorCode
+
+---
+
+### 5. 启动 Web
+
+终端二：
+
+```bash
+pnpm -C web dev
+```
+
+预期：
+
+```text
+Local: http://localhost:5173/
+```
+
+打开：
+
+```text
+http://localhost:5173
+```
+
+开发环境中，Vite 会把：
+
+```text
+/api/*
+```
+
+代理到：
+
+```text
+http://localhost:3001
+```
+
+---
+
+### 6. 运行自动测试
+
+Server 完整回归：
+
+```bash
+pnpm -C server test
+```
+
+当前回归覆盖：
+
+- Health
+- 普通流式聊天
+- 工具调用
+- RAG hit
+- RAG no-hit
+- RAG disabled
+- 非法请求
+- Provider 错误
+- Embedding 错误
+- 未知内部错误
+- 首 Token 超时
+- 整体超时
+- 结构化请求日志
+
+Server TypeScript 检查：
+
+```bash
+pnpm -C server exec tsc --noEmit
+```
+
+Web 类型检查：
+
+```bash
+pnpm -C web run type-check
+```
+
+Web 生产构建：
+
+```bash
+pnpm -C web run build
+```
+
+自动测试固定使用 Fake Chat Provider 和 Mock Embedding，不需要真实 API Key。
+
+---
+
+### 7. 最小 API 冒烟
+
+#### 普通聊天
+
+```bash
+curl -N http://localhost:3001/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{"message":"你好","toolChoice":"none","rag":false}'
+```
+
+预期事件顺序：
+
+```text
+start
+→ delta
+→ done
+```
+
+#### 工具调用
+
+```bash
+curl -N http://localhost:3001/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{"message":"请提取待办：更新 README","toolChoice":"auto","rag":false}'
+```
+
+预期事件顺序：
+
+```text
+start
+→ tool_call
+→ tool_result
+→ delta
+→ done
+```
+
+#### RAG
+
+RAG 需要配置有效的 Embedding Provider：
+
+```bash
+curl -N http://localhost:3001/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{"message":"Thoth Week3 为什么需要返回 sources？","toolChoice":"none","rag":true}'
+```
+
+预期事件顺序：
+
+```text
+start
+→ sources
+→ delta
+→ done
+```
+
+---
+
+### 8. 常见问题
+
+#### `ERR_PNPM_NO_SCRIPT Missing script: test`
+
+原因：在项目根目录运行了：
+
+```bash
+pnpm test
+```
+
+解决：
+
+```bash
+pnpm -C server test
+```
+
+#### `Couldn't connect to localhost port 3001`
+
+优先检查：
+
+1. Server 是否已经启动
+2. `server/.env` 中的 `PORT`
+3. 3001 端口是否被其他程序占用
+
+#### 页面打开但 API 请求失败
+
+检查：
+
+1. Web 是否运行在 `http://localhost:5173`
+2. Server 是否运行在 `http://localhost:3001`
+3. `CORS_ORIGIN` 是否为 `http://localhost:5173`
+4. `web/vite.config.ts` 的 proxy target 是否为 `http://localhost:3001`
+
+#### 页面显示 `fake-model`
+
+这是正常的 Fake Chat 模式。
+
+如果希望使用真实模型，请在 `server/.env` 中配置 `THOTH_API_KEY` 并重启 Server。
+
+#### 开启 RAG 后显示 `EMBEDDING_ERROR`
+
+检查：
+
+```env
+THOTH_EMBEDDING_BASE_URL
+THOTH_EMBEDDING_API_KEY
+THOTH_EMBEDDING_MODEL
+```
+
+普通 Chat Key 和 Embedding Key 是两套独立配置。
+
+#### 修改 `.env` 后没有生效
+
+环境变量只在进程启动时读取。
+
+修改后停止并重新运行：
+
+```bash
+pnpm -C server dev
+```
+
 ## 路线图
 
 Thoth 的当前目标是从一个学习型 AI Chat 项目，逐步升级为一个更真实的知识库问答助手：
@@ -70,21 +456,21 @@ Week3 已完成最小可用 RAG 闭环。后续不再把“工程化”和“RAG
 
 **阶段拆分**
 
-- [ ] 阶段 1：整理普通聊天、工具调用、RAG 命中、RAG no-hit、停止、超时等验收用例
-- [ ] 阶段 2：建立最小回归题库，覆盖 Week1 - Week3 主链路
-- [ ] 阶段 3：统一错误码和错误展示
-- [ ] 阶段 4：记录 requestId、latency、provider、model
-- [ ] 阶段 5：整理 env 配置和启动说明
-- [ ] 阶段 6：补一份 Week4 checklist
+- [x] 阶段 1：整理普通聊天、工具调用、RAG 命中、RAG no-hit、停止、超时等验收用例
+- [x] 阶段 2：建立最小回归题库，覆盖 Week1 - Week3 主链路
+- [x] 阶段 3：统一错误码和错误展示
+- [x] 阶段 4：记录 requestId、latency、provider、model
+- [x] 阶段 5：整理 env 配置和启动说明
+- [x] 阶段 6：补一份 Week4 checklist
 
 **完成标准**
 
-- [ ] 普通聊天可以回归
-- [ ] 工具调用可以回归
-- [ ] RAG 命中可以回归
-- [ ] RAG no-hit 可以回归
-- [ ] 停止和超时路径可以验证
-- [ ] 出错时能通过 requestId 和日志定位
+- [x] 普通聊天可以回归
+- [x] 工具调用可以回归
+- [x] RAG 命中可以回归
+- [x] RAG no-hit 可以回归
+- [x] 停止和超时路径可以验证
+- [x] 出错时能通过 requestId 和日志定位
 
 **一句话**：本周先把 Thoth 变得可验证。
 

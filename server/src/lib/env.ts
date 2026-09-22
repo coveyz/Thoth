@@ -26,7 +26,7 @@ function num(name: string, fallback: number) {
 
 export function loadEnv(): Env {
     return {
-        PORT: num('PORT', 3000),
+        PORT: num('PORT', 3001),
         CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
 
         // Week1：允许为空（为空则走 fake provider），但建议你配上 DeepSeek

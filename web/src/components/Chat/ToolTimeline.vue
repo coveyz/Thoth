@@ -108,10 +108,29 @@ const getEventTitle = (event: ToolTimeLineEvent) => {
             <span>{{ event.payload.message }}</span>
           </div>
         </template>
+      </div>
+      <div v-if="turn.error" class="turn-error">
+        <div class="label">
+          chat error
+        </div>
 
-        <div class="turn-error" v-if="turn.errorText">
-          <div class="label">chat error</div>
-          <div class="text">{{ turn.errorText }}</div>
+        <div class="text">
+          {{ turn.error.title }}：
+          {{ turn.error.message }}
+        </div>
+
+        <div class="row">
+          <span class="label">code</span>
+          <span>{{ turn.error.code }}</span>
+        </div>
+
+        <div v-if="turn.error.requestId" class="row">
+          <span class="label">
+            requestId
+          </span>
+          <span>
+            {{ turn.error.requestId }}
+          </span>
         </div>
       </div>
     </div>

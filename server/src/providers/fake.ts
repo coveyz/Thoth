@@ -12,19 +12,27 @@ const getLastUserMessage = (message: ProviderMessage[]) => {
 const buildFakeFinalAnswer = (messages: ProviderMessage[]) => {
     const lastUser = getLastUserMessage(messages);
 
+    // RAG no-hit 确定性回答
+    // fake Provider 识别该标记后明确表达文档未覆盖，让 no-hit 行为可以稳定回归
+    if (lastUser.includes('本轮没有检索到任何相关文档片段')) {
+        return [
+            '当前文档未覆盖这个问题',
+            '',
+            '(Week3 fake rag no-hit answer)',
+            ''
+        ].join('\n');
+    };
 
     if (lastUser.includes('可用 sources')) {
         return [
-            '这是 fake provider 的 RAG 会发。',
-            '',
-            '我看到了本轮次传入的 sources，并会假装基于 sources 回答。',
-            '',
-            lastUser,
+            '根据检索到的资料，',
+            'Thoth Week3 返回 sources 是为了让回答可以追溯依据。',
+            '[source 1]',
             '',
             '(Week3 fake rag final answer)',
-            ''
+            '',
         ].join('\n');
-    }
+    };
 
 
     if (lastUser.includes('工具结果')) {

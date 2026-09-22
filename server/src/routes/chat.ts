@@ -1,12 +1,14 @@
 import { Router } from 'express';
-import { initSSE, writeEvent, endSSE, safeWriteEvent } from '../lib/sse';
+import { initSSE, endSSE, safeWriteEvent } from '../lib/sse';
 import { getProvider } from '../providers/index';
 import { isToolName } from '../tools';
 import { prepareAssistantTurn } from '../orchestrators/chatOrchestrators';
 import { prepareRagTurn } from '../orchestrators/ragOrchestrators';
+import { AppError, isAbortError, toPublicError } from '../lib/error';
 
 import type { Env } from '../lib/env';
 import type { ToolChoice } from '../prompts/system';
+import { getRequestContext } from '../lib/requestContext';
 
 /** 解析客户端传入的 toolChoice 非法值统一回退到 auto */
 const readToolChoice = (value: unknown): ToolChoice => {
@@ -22,7 +24,8 @@ export function chatRouter(env: Env) {
     const router = Router();
 
     router.post('/stream', async (req, res) => {
-        const requestId = (req as any).requestId ?? 'unknown';
+        const requestContext = getRequestContext(req);
+        const requestId = requestContext.requestId;
 
         // SSE 连接初始化
         initSSE(res);
@@ -34,13 +37,17 @@ export function chatRouter(env: Env) {
         const message = req.body?.message;
         const toolChoice = readToolChoice(req.body?.toolChoice);
         const useRag = req.body?.rag === true;
+        requestContext.rag = useRag; // 即使后面参数校验失败，也记录客户端是否请求了 RAG。
 
         if (typeof message !== 'string' || !message.trim()) {
+            requestContext.outcome = 'bad_request'; // 请求参数不合法
+            requestContext.errorCode = 'BAD_REQUEST'; // 设置错误码
+
+            const publicError = toPublicError(new AppError('BAD_REQUEST', { publicMessage: 'message is required' }))
             await safeWriteEvent(res, 'error', {
-                code: 'BAD_REQUEST',
-                message: 'message is required',
+                ...publicError,
                 requestId,
-            })
+            });
             return endSSE(res);
         };
 
@@ -55,23 +62,35 @@ export function chatRouter(env: Env) {
         res.on('close', () => {
             if (res.writableEnded) return; // 我们自己正常 end 的不算 stop
             clientClosed = true;
+
+            if (requestContext.outcome === 'pending') {
+                requestContext.outcome = 'client_closed';
+            };
+
             upstreamAbort.abort();
-            console.log(`[${requestId}] client closed (before end)`);
         });
         // 请求被中断， 比如客户端中断请求
         req.on('aborted', () => {
             clientClosed = true;
+
+            if (requestContext.outcome === 'pending') {
+                requestContext.outcome = 'client_closed';
+            };
+
             upstreamAbort.abort();
-            console.log(`[${requestId}] client aborted (before end)`);
         });
 
         // 选择 provider， 目前根据环境变量决定，后续可以更复杂的策略
         const provider = getProvider(env);
+        requestContext.provider = provider.name; // 记录选择的 provider
+        requestContext.model = provider.model; // 记录选择的模型
+
         // start事件： 协议固定
         // 无论 direct 还是 tool 模式， 都先发送 start 事件， 前端拿到 start 事件后才会展示 loading 状态， 避免模型响应慢时 前端一直loading
         if (!(await safeWriteEvent(res, 'start', { requestId, model: provider.model }))) {
             // 写不进去说明链接已经断了， 直接结束
             clientClosed = true;
+            requestContext.outcome = 'client_closed'; // 客户端关闭
             upstreamAbort.abort();
             return endSSE(res);
         };
@@ -93,11 +112,16 @@ export function chatRouter(env: Env) {
             if (clientClosed) return;
 
             clientClosed = true;
+
+            requestContext.outcome = 'timeout'; // 整体超时
+            requestContext.errorCode = 'OVERALL_TIMEOUT'
+
             upstreamAbort.abort();
 
+            const publicError = toPublicError(new AppError('OVERALL_TIMEOUT'))
+
             safeWriteEvent(res, 'error', {
-                code: 'OVERALL_TIMEOUT',
-                message: `overall timeout of ${env.THOTH_OVERALL_TIMEOUT_MS}ms`,
+                ...publicError,
                 requestId
             }).finally(() => {
                 clearInterval(pingTimer);
@@ -114,7 +138,6 @@ export function chatRouter(env: Env) {
                     userMessage: message.trim(),
                     env
                 });
-                console.log(`[${requestId}] prepared RAG turn:${prepared}`);
 
                 if (clientClosed) return;
 
@@ -133,11 +156,16 @@ export function chatRouter(env: Env) {
                     if (clientClosed || gotAnyDelta) return;
 
                     clientClosed = true;
+
+                    requestContext.outcome = 'timeout'; // 首个 token 超时
+                    requestContext.errorCode = 'FIRST_TOKEN_TIMEOUT';
+
                     upstreamAbort.abort();
 
+                    const publicError = toPublicError(new AppError('FIRST_TOKEN_TIMEOUT'))
+
                     safeWriteEvent(res, 'error', {
-                        code: "FIRST_TOKEN_TIMEOUT",
-                        message: `no token within ${env.THOTH_FIRST_TOKEN_TIMEOUT_MS}ms after rag retrieval`,
+                        ...publicError,
                         requestId
                     }).finally(() => {
                         clearInterval(pingTimer);
@@ -169,7 +197,12 @@ export function chatRouter(env: Env) {
                 };
 
                 if (!clientClosed) {
-                    await safeWriteEvent(res, 'done', { ok: true });
+                    const doneWritten = await safeWriteEvent(res, 'done', { ok: true });
+
+                    requestContext.outcome = doneWritten
+                        ? 'success'
+                        : 'client_closed';
+
                     endSSE(res);
                 };
 
@@ -186,12 +219,12 @@ export function chatRouter(env: Env) {
                 toolChoice
             })
 
-            console.log(`[${requestId}] prepared turn:`, prepared);
-
             if (clientClosed) return;
 
             // 工具调用开始，先把调用了什么工具， 为什么调用，参数是什么告诉前端
             if (prepared.toolCall) {
+                requestContext.toolName = prepared.toolCall.name;
+
                 const ok = await safeWriteEvent(res, 'tool_call', {
                     name: prepared.toolCall.name,
                     arguments: prepared.toolCall.arguments,
@@ -237,11 +270,21 @@ export function chatRouter(env: Env) {
                 if (clientClosed || gotAnyDelta) return;
 
                 clientClosed = true;
+
+                requestContext.outcome = 'timeout'; // 首个 token 超时
+                requestContext.errorCode = 'FIRST_TOKEN_TIMEOUT';
+
                 upstreamAbort.abort();
 
+                const publicError = toPublicError(
+                    new AppError(
+                        'FIRST_TOKEN_TIMEOUT'
+                    )
+                );
+
+
                 safeWriteEvent(res, 'error', {
-                    code: "FIRST_TOKEN_TIMEOUT",
-                    message: `no token within ${env.THOTH_FIRST_TOKEN_TIMEOUT_MS}ms after tool execution`,
+                    ...publicError,
                     requestId
                 }).finally(() => {
                     clearInterval(pingTimer);
@@ -272,30 +315,30 @@ export function chatRouter(env: Env) {
             }
 
             if (!clientClosed) {
-                await safeWriteEvent(res, 'done', { ok: true });
+                const doneWritten = await safeWriteEvent(res, 'done', { ok: true });
+
+                requestContext.outcome = doneWritten
+                    ? 'success'
+                    : 'client_closed';
+
                 endSSE(res);
             };
-        } catch (error: any) {
+        } catch (error: unknown) {
             // 如果客户端已断开， 不需要再写SSE
             if (clientClosed) return;
 
-            // 用户 stop /  上游被中断abort， 统一当正常结束 （done + reason）
-            if (error?.name === 'AbortError') {
+            if (isAbortError(error)) {
+                requestContext.outcome = 'stopped';
+
                 await safeWriteEvent(res, 'done', { ok: true, reason: 'stop' });
                 return endSSE(res);
             };
 
-            // 其他异常: error事件返回给前端， 避免一直loading
-            const code = error?.code ?? "INTERNAL_ERROR";
-            const messageOut = typeof error?.message === 'string'
-                ? error.message
-                : 'unknown error';
+            const publicError = toPublicError(error);
+            requestContext.outcome = 'error';
+            requestContext.errorCode = publicError.code;
 
-            console.error(`[${requestId}] error: ${error}`);
-            console.error(error);
-
-            // writeEvent(res, 'error', { code, message: messageOut, requestId });
-            await safeWriteEvent(res, 'error', { code, message: messageOut, requestId });
+            await safeWriteEvent(res, 'error', { ...publicError, requestId });
             endSSE(res);
         } finally {
             clearInterval(pingTimer);

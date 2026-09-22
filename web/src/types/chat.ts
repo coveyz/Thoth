@@ -10,7 +10,49 @@ export type SSEEventName = 'start' | 'delta' | 'ping' | 'done' | 'error' |
 export type SSEStart = { requestId: string; model: string; };
 export type SSEPing = { t: number; };
 export type SSEDone = { ok: true; reason?: 'stop' };
-export type SSEError = { code: string; message: string; requestId?: string; };
+
+/**
+ * 与 Server的 AppErrorCode 保持一致
+ */
+export type ServerErrorCode =
+  | "BAD_REQUEST"
+  | "PROVIDER_ERROR"
+  | "EMBEDDING_ERROR"
+  | "TOOL_ERROR"
+  | "FIRST_TOKEN_TIMEOUT"
+  | "OVERALL_TIMEOUT"
+  | "INTERNAL_ERROR"
+
+/**
+ * BAD_EVENT: 收到无法解析的 SSE data
+ * NETWORK_ERROR： fetch本身失败，例如 Server 未启动或网络断开
+ * HTTP_${number}： Server 在建立 SSE 前返回非 2xx HTTP 状态。
+ */
+export type ClientErrorCode =
+  | ServerErrorCode
+  | 'BAD_EVENT'
+  | 'NETWORK_ERROR'
+  | `HTTP_${number}`
+
+/**
+ * SSE 或 API 层传递的标准错误
+ */
+export type SSEError = {
+  code: ClientErrorCode;
+  message: string;
+  requestId?: string;
+};
+
+/**
+ * ErrorBanner 使用的展示模型
+ * 它与 SSEError 分开定义，因为 title 是 UI 概念
+ */
+export type ChatDisplayError = {
+  code: ClientErrorCode;
+  title: string;
+  message: string;
+  requestId?: string;
+};
 
 /** 模型决定要调用工具时，server 会把这条事件推给前端 */
 export type SSEToolCall = {
@@ -74,11 +116,16 @@ export type ChatTurnTrace = {
   model?: string;
   outcome: ChatTurnOutCome;
   doneReason?: SSEDone['reason'];
-  errorText?: string;
+
+  error?: ChatDisplayError;
+
   events: ToolTimeLineEvent[];
   rag: boolean;
   sources: RagSource[];
-}
+};
+
+
+
 
 export type RagSource = {
   id: string;

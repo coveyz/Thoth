@@ -42,7 +42,7 @@ const toolChoiceText = computed(() => {
       <div class="meta-item">Conversation: {{ chat.conversationId }}</div>
     </div>
 
-    <ErrorBanner v-if="chat.errorText" :text="chat.errorText" @close="chat.clearError" />
+    <ErrorBanner v-if="chat.errorInfo" :error="chat.errorInfo" @close="chat.clearError" />
     <MessageList :messages="chat.messages" :status="chat.status" />
 
     <SourcesPanel

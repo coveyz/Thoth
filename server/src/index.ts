@@ -1,29 +1,13 @@
 import "dotenv/config";
-import express from 'express';
-import cors from 'cors';
 
-import { chatRouter } from './routes/chat';
+import { createApp } from './app';
 import { loadEnv } from './lib/env';
-import { requestLogger } from './lib/logger';
 
+// 生产或本地开发环境从 process.env 读取配置。
 const env = loadEnv();
-const app = express();
-app.disable("x-powered-by");
+const app = createApp(env);
 
-// JSON 体积限制 避免被大包拖垮 week1
-app.use(express.json({ limit: '1mb' }));
-// 只放行本地前端 
-app.use(cors({ origin: env.CORS_ORIGIN }));
-
-// 每个请求一个短id， 方便定位 ‘中断/超时/上游报错’
-app.use(requestLogger());
-
-app.get("/healthz", (_req, res) => {
-    res.json({ ok: true, version: '0.1.0' });
-});
-
-app.use('/api/chat', chatRouter(env));
-
+// 只有进程入口负责监听端口
 app.listen(env.PORT, () => {
     console.log(`[server] listening on http://localhost:${env.PORT}`);
 });
