@@ -13,6 +13,10 @@ type SourcePayload = {
         documentId: string;
         title: string;
         source: string;
+
+        path: string;
+        updatedAt: string;
+
         chunkIndex: number;
         content: string;
         score: number;
@@ -101,6 +105,19 @@ describe('Thoth RAG regression', () => {
         expect(firstSource.source).toBeTruthy();
         expect(firstSource.content).toBeTruthy();
         expect(firstSource.chunkIndex).toBeGreaterThanOrEqual(0);
+
+        expect(firstSource.path).toBe('README.md');
+        expect(firstSource.updatedAt).toBe('1970-01-01T00:00:00.000Z');
+        // 所有公开 Source 都必须保留这两个字段
+        for (const source of sourcePayload.sources) {
+            expect(source.path).toBeTruthy();
+            // 检查常见 Unix / Windows 绝对路径形式
+            expect(source.path).not.toMatch(/^(?:\/|[A-Za-z]:[\\/]|\\\\)/)
+            expect(Number.isNaN(Date.parse(source.updatedAt))).toBe(false);
+            // Embedding 属于服务端内部索引数据
+            expect(source).not.toHaveProperty('embedding');
+        };
+
         // Mock 相关向量完全相同，因此相似度应当为 1。
         expect(firstSource.score).toBe(1);
 

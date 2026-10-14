@@ -126,12 +126,18 @@ export type ChatTurnTrace = {
 
 
 
-
+/**
+ * Server 通过 sources 事件返回的公开引用
+ */
 export type RagSource = {
   id: string;
   documentId: string;
   title: string;
   source: string;
+
+  path: string;
+  updatedAt: string;
+
   chunkIndex: number;
   content: string;
   score: number;

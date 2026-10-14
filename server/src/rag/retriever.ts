@@ -1,12 +1,9 @@
 import { ragDocuments } from './document';
 import { embedTexts } from './embedding';
 import { cosineSimilarity } from './similarity';
+import { DEFAULT_RAG_RETRIEVAL_OPTIONS } from './config';
 import type { Env } from '../lib/env';
 import type { RagSearchResult, RagSource } from './types';
-
-
-/** 阶段5目标，命中相关文档时，正常返回sources，问题明显不在时 不硬塞 */
-const MIN_RAG_SCORE = 0.55;
 
 /** 
  * 文档定向存量 🧭
@@ -48,7 +45,7 @@ const getDocumentEmbeddings = (
 export const retrieveSources = async (
     query: string,
     env: Env,
-    topK = 3
+    topK = DEFAULT_RAG_RETRIEVAL_OPTIONS.topK
 ): Promise<RagSearchResult> => {
 
     const [queryEmbedding] = await embedTexts([query], env);
@@ -57,12 +54,19 @@ export const retrieveSources = async (
     const sources: RagSource[] = ragDocuments
         .map((document, index) => {
             return {
-                ...document,
+                id: document.id,
+                documentId: document.documentId,
+                title: document.title,
+                source: document.source,
+                path: document.path,
+                updatedAt: document.updatedAt,
+                chunkIndex: document.chunkIndex,
+                content: document.content,
                 score: cosineSimilarity(queryEmbedding, documentEmbeddings[index]),
             }
         })
         .sort((a,b) => b.score - a.score)
-        .filter(source => source.score >= MIN_RAG_SCORE)
+        .filter(source => source.score >= DEFAULT_RAG_RETRIEVAL_OPTIONS.minScore)
         .slice(0, topK);
 
     return {

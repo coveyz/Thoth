@@ -1,6 +1,9 @@
 import { chunkText } from './chunker'
+import { DEFAULT_RAG_INDEX_CONFIG } from './config';
 import type { RagDocument, RagRawDocument } from './types';
 
+/** 仅用于旧写死文档的迁移适配 */
+const LEGACY_DOCUMENT_UPDATED_AT = '1970-01-01T00:00:00.000Z';
 
 /**
  * 阶段2: 保存原始文档，不在手写chunk
@@ -11,6 +14,8 @@ export const rawRagDocuments: RagRawDocument[] = [
         id: 'thoth-roadmap',
         title: 'Thoth 四周路线图',
         source: 'README.md#roadmap',
+        path: 'README.md',
+        updatedAt: LEGACY_DOCUMENT_UPDATED_AT,
         content: [
             '第 1 周：聊天 MVP。目标是做出一个像样的 Thoth Chat，具备流式输出、停止生成、错误提示、会话基础状态管理。',
             '第 2 周：可控输出 + 工具调用。目标是让模型输出更可控，并引入 Tool Calling。',
@@ -27,6 +32,8 @@ export const rawRagDocuments: RagRawDocument[] = [
         id: 'thoth-week2-checklist',
         title: 'Thoth Week2 验收说明',
         source: 'WEEK2_CHECKLIST.md',
+        path: 'WEEK2_CHECKLIST.md',
+        updatedAt: LEGACY_DOCUMENT_UPDATED_AT,
         content: [
             'Week2 的重点是模型决策、工具执行、结果回灌、最终回答。',
             'SSE 新增事件包括 tool_call、tool_result、tool_error。',
@@ -44,8 +51,8 @@ export const rawRagDocuments: RagRawDocument[] = [
  */
 export const ragDocuments: RagDocument[] = rawRagDocuments.flatMap(doc => {
     const chunks = chunkText(doc.content, {
-        chunkSize: 180,
-        overlap: 40,
+        chunkSize: DEFAULT_RAG_INDEX_CONFIG.chunkSize,
+        overlap: DEFAULT_RAG_INDEX_CONFIG.overlap,
     });
 
     return chunks.map((content, index) => {
@@ -54,6 +61,8 @@ export const ragDocuments: RagDocument[] = rawRagDocuments.flatMap(doc => {
             documentId: doc.id,
             title: doc.title,
             source: doc.source,
+            path: doc.path,
+            updatedAt: doc.updatedAt,
             chunkIndex: index,
             content,
         }
