@@ -20,10 +20,7 @@ export type RagRawDocument = {
     updatedAt: string;
 };
 
-
-/** 
- * 可以参与检索的文档片段，也就是 Chunk
- */
+/** 可以参与检索的文档片段，也就是 Chunk */
 export type RagDocument = {
     /** Chunk ID，由文档 ID 和 Chunk 序号生成 */
     id: string;
@@ -39,8 +36,8 @@ export type RagDocument = {
     content: string;
 }
 
-/** 
- * 返回给 编排层，前端，模型prompt 公开引用
+/**
+ *  返回给 编排层，前端，模型prompt 公开引用
  *  - 独立列出字段，明确公开边界
  *  - 不包含 Embedding 向量，机器绝对路径或内部错误
  */
@@ -56,7 +53,7 @@ export type RagSource = {
     score: number
 };
 
-/** 
+/**
  * Retriever 返回结构
  *  - 保存现有接口形状
  */
@@ -128,7 +125,7 @@ export type RagIndexStatus =
     | {
         state: 'ready',
         builtAt: string;
-        documentContent: number;
+        documentCount: number;
         chunkCount: number;
     }
     | {
