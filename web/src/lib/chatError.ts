@@ -9,6 +9,7 @@ const SERVER_ERROR_TITLES: Record<ServerErrorCode, string> = {
   FIRST_TOKEN_TIMEOUT: '模型响应超时',
   OVERALL_TIMEOUT: '请求处理超时',
   INTERNAL_ERROR: '服务内部异常',
+  DOCUMENT_LOAD_ERROR: '知识库文档加载异常',
 };
 
 /**
@@ -31,6 +32,7 @@ const getErrorTitle = (code: ClientErrorCode): string => {
     case 'FIRST_TOKEN_TIMEOUT':
     case 'OVERALL_TIMEOUT':
     case 'INTERNAL_ERROR':
+    case 'DOCUMENT_LOAD_ERROR':
       return SERVER_ERROR_TITLES[code];
     default:
       return '未知错误';

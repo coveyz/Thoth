@@ -10,6 +10,7 @@ export type AppErrorCode =
     | "FIRST_TOKEN_TIMEOUT"
     | "OVERALL_TIMEOUT"
     | "INTERNAL_ERROR"
+    | "DOCUMENT_LOAD_ERROR"
 
 /**
  * 发送给前端的公共错误结构
@@ -27,6 +28,7 @@ const DEFAULT_PUBLIC_MESSAGES: Record<AppErrorCode, string> = {
     FIRST_TOKEN_TIMEOUT: '模型响应超时，请稍后重试',
     OVERALL_TIMEOUT: '请求处理超时，请稍后重试',
     INTERNAL_ERROR: '服务暂时不可用，请稍后重试',
+    DOCUMENT_LOAD_ERROR: '知识库文档加载失败，请检查文档配置后重试',
 };
 
 type AppErrorOptions = {

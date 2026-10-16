@@ -22,6 +22,7 @@ export type ServerErrorCode =
   | "FIRST_TOKEN_TIMEOUT"
   | "OVERALL_TIMEOUT"
   | "INTERNAL_ERROR"
+  | "DOCUMENT_LOAD_ERROR"
 
 /**
  * BAD_EVENT: 收到无法解析的 SSE data

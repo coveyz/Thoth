@@ -144,3 +144,23 @@ export type RagIndexState = {
     readonly status: RagIndexStatus;
     readonly lastFailure: RagIndexFailure | null;
 };
+
+/**
+ * loader 非致命诊断
+ *  - 空白文件被跳过，仍然需要让调用方知道
+ *  - path 只包含知识库中的相对路径
+*/
+export type RagLoadDiagnostic = {
+    code: 'EMPTY_DOCUMENT';
+    path: string;
+    message: string;
+};
+
+/**
+ * 一次完整文档加载结果
+ *  - 合法文档读取失败：无法确认知识库完整性，整次加载失败
+ */
+export type RagLoadResult = {
+    documents: RagRawDocument[];
+    diagnostics: RagLoadDiagnostic[];
+};
