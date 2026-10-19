@@ -272,7 +272,7 @@ export async function loadKnowledgeDocuments(
             documents.push({
                 id: createDocumentId(candidate.relativePath),
                 title: getDocumentTitle(candidate.relativePath, content),
-                source: candidate.relativePath, 
+                source: candidate.relativePath,
                 path: candidate.relativePath,
                 updatedAt: updatedAt,
                 content

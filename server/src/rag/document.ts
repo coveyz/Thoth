@@ -1,4 +1,4 @@
-import { chunkText } from './chunker'
+import { chunkDocument } from './chunker'
 import { DEFAULT_RAG_INDEX_CONFIG } from './config';
 import type { RagDocument, RagRawDocument } from './types';
 
@@ -49,22 +49,9 @@ export const rawRagDocuments: RagRawDocument[] = [
  * 阶段2： 从原始文档自动生成可检索 chunks
  *  - retriever 使用的入口
  */
-export const ragDocuments: RagDocument[] = rawRagDocuments.flatMap(doc => {
-    const chunks = chunkText(doc.content, {
+export const ragDocuments: RagDocument[] = rawRagDocuments.flatMap(document => {
+    return chunkDocument(document, {
         chunkSize: DEFAULT_RAG_INDEX_CONFIG.chunkSize,
         overlap: DEFAULT_RAG_INDEX_CONFIG.overlap,
-    });
-
-    return chunks.map((content, index) => {
-        return {
-            id: `${doc.id}-chunk-${index + 1}`,
-            documentId: doc.id,
-            title: doc.title,
-            source: doc.source,
-            path: doc.path,
-            updatedAt: doc.updatedAt,
-            chunkIndex: index,
-            content,
-        }
     });
 });

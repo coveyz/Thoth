@@ -10,6 +10,7 @@ const SERVER_ERROR_TITLES: Record<ServerErrorCode, string> = {
   OVERALL_TIMEOUT: '请求处理超时',
   INTERNAL_ERROR: '服务内部异常',
   DOCUMENT_LOAD_ERROR: '知识库文档加载异常',
+  RAG_INDEX_ERROR: '知识库索引异常'
 };
 
 /**
@@ -33,6 +34,7 @@ const getErrorTitle = (code: ClientErrorCode): string => {
     case 'OVERALL_TIMEOUT':
     case 'INTERNAL_ERROR':
     case 'DOCUMENT_LOAD_ERROR':
+    case 'RAG_INDEX_ERROR':
       return SERVER_ERROR_TITLES[code];
     default:
       return '未知错误';
