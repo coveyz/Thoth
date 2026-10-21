@@ -1,7 +1,8 @@
 {
     "cSpell.words": [
         "chunker",
-        "healthz"
+        "healthz",
+        "unstub"
     ],
     "workbench.colorCustomizations": {
         "activityBar.activeBackground": "#7a73eb",

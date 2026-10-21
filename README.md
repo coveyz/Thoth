@@ -115,6 +115,7 @@ RAG 使用独立的 Embedding Provider：
 THOTH_EMBEDDING_BASE_URL=https://api.openai.com/v1
 THOTH_EMBEDDING_API_KEY=你的真实密钥
 THOTH_EMBEDDING_MODEL=text-embedding-3-small
+THOTH_EMBEDDING_BATCH_SIZE=32
 ```
 
 也可以使用支持 OpenAI-compatible Embedding API 的其他 Provider。
@@ -131,6 +132,7 @@ THOTH_EMBEDDING_MODEL=text-embedding-3-small
 
 自动测试中的 RAG 使用 Vitest Mock Embedding，不会调用真实 API。
 
+> THOTH_EMBEDDING_BATCH_SIZE 控制文档索引构建时每批发送的文本数量，默认 32，必须为正整数。未配置或为空白时使用默认值，非法配置会阻止服务启动。批处理函数已完成，索引构建接入后会使用该配置；当前聊天检索尚未切换到新索引。Embedding 单次请求超时为 30 秒，暂不自动重试。
 ---
 
 ### 4. 启动 Server

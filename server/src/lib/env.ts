@@ -1,3 +1,5 @@
+import { DEFAULT_RAG_INDEX_CONFIG } from "../rag/config";
+
 export type Env = {
     PORT: number;
     CORS_ORIGIN: string;
@@ -13,6 +15,7 @@ export type Env = {
     THOTH_EMBEDDING_BASE_URL: string;
     THOTH_EMBEDDING_API_KEY: string;
     THOTH_EMBEDDING_MODEL: string;
+    THOTH_EMBEDDING_BATCH_SIZE: number
 };
 
 function num(name: string, fallback: number) {
@@ -20,13 +23,28 @@ function num(name: string, fallback: number) {
     if (!raw) return fallback;
 
     const n = Number(raw);
-    
+
     return Number.isFinite(n) ? n : fallback;
+};
+
+/** 数量上限等必须为正整数的配置 */
+function positiveInteger(name: string, fallback: number) {
+    const raw = process.env[name];
+
+    if (raw === undefined || raw.trim() === '') return fallback;
+    const value = Number(raw);
+
+    if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(`${name} must be a positive safe integer`)
+    }
+
+    return value;
 };
 
 export function loadEnv(): Env {
     return {
         PORT: num('PORT', 3001),
+        THOTH_EMBEDDING_BATCH_SIZE: positiveInteger('THOTH_EMBEDDING_BATCH_SIZE', DEFAULT_RAG_INDEX_CONFIG.embeddingBatchSize),
         CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
 
         // Week1：允许为空（为空则走 fake provider），但建议你配上 DeepSeek
