@@ -27,6 +27,7 @@ export type RagDocument = {
     /** 对应 RagRawDocument.id  */
     documentId: string;
     title: string;
+    /** 面向用户展示的相对来源 */
     source: string;
     path: string;
     updatedAt: string;
