@@ -88,7 +88,7 @@ export async function buildRagIndex(
         };
 
         /**
-         * 3. 组织文档 Embedding 输入, 
+         * 3. 组织文档 Embedding 输入,
          *  - 延续: 标题+来源+chunk正文
          */
         const texts = chunks.map((chunk) => {
