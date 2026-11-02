@@ -7,8 +7,8 @@
  * - 接近-1 语义相反
  */
 export const cosineSimilarity = (
-    left: number[],
-    right: number[]
+    left: readonly number[],
+    right: readonly number[]
 ): number => {
     if (left.length === 0 || left.length !== right.length) return 0;
 
