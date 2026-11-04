@@ -1,3 +1,6 @@
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+
 import { DEFAULT_RAG_INDEX_CONFIG } from "../../src/rag/config";
 import type { Env } from "../../src/lib/env";
 
@@ -42,7 +45,13 @@ export function createTestEnv(
         THOTH_EMBEDDING_BASE_URL: 'https://api.openai.com/v1',
         THOTH_EMBEDDING_API_KEY: '',
         THOTH_EMBEDDING_MODEL: 'text-embedding-3-small',
-        THOTH_EMBEDDING_BATCH_SIZE: DEFAULT_RAG_INDEX_CONFIG.embeddingBatchSize
+        THOTH_EMBEDDING_BATCH_SIZE: DEFAULT_RAG_INDEX_CONFIG.embeddingBatchSize,
+
+        /**
+         * 默认 不指向开发者的真实知识库
+         * 启用新的 RAG 链路的测试应覆盖为自己的临时目录。
+         */
+        THOTH_KNOWLEDGE_DIR: path.join(tmpdir(), 'thoth-test-knowledge-not-configured')
     }
 
     return {

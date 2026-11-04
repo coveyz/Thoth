@@ -15,7 +15,9 @@ export type Env = {
     THOTH_EMBEDDING_BASE_URL: string;
     THOTH_EMBEDDING_API_KEY: string;
     THOTH_EMBEDDING_MODEL: string;
-    THOTH_EMBEDDING_BATCH_SIZE: number
+    THOTH_EMBEDDING_BATCH_SIZE: number;
+
+    THOTH_KNOWLEDGE_DIR: string;
 };
 
 function num(name: string, fallback: number) {
@@ -59,5 +61,7 @@ export function loadEnv(): Env {
         THOTH_EMBEDDING_BASE_URL: process.env.THOTH_EMBEDDING_BASE_URL || 'https://api.openai.com/v1',
         THOTH_EMBEDDING_API_KEY: process.env.THOTH_EMBEDDING_API_KEY || '',
         THOTH_EMBEDDING_MODEL: process.env.THOTH_EMBEDDING_MODEL || 'text-embedding-3-small',
-    }
+
+        THOTH_KNOWLEDGE_DIR: process.env.THOTH_KNOWLEDGE_DIR?.trim() || './knowledge'
+    };
 }

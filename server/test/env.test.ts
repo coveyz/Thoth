@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import { loadEnv } from "../src/lib/env";
 import { DEFAULT_RAG_INDEX_CONFIG } from "../src/rag/config";
@@ -57,6 +57,40 @@ describe('Embedding Batch 环境配置', () => {
         expect(() => loadEnv()).toThrow(
             'THOTH_EMBEDDING_BATCH_SIZE must be a positive safe integer',
         );
+    });
+
+    beforeEach(() => {
+        // 固定无关配置，避免环境中的 Batch Size 干扰。
+        vi.stubEnv(
+            'THOTH_EMBEDDING_BATCH_SIZE',
+            '32',
+        );
+    });
+
+    it.each([
+        { name: '未配置', raw: undefined },
+        { name: '空字符串', raw: '' },
+        { name: '纯空白', raw: '   ' },
+    ])('$name 时使用默认知识库目录', ({ raw }) => {
+        vi.stubEnv(
+            'THOTH_KNOWLEDGE_DIR',
+            raw,
+        );
+
+        expect(
+            loadEnv().THOTH_KNOWLEDGE_DIR,
+        ).toBe('./knowledge');
+    });
+
+    it('读取自定义目录并移除配置首尾空白', () => {
+        vi.stubEnv(
+            'THOTH_KNOWLEDGE_DIR',
+            '  ./custom-knowledge  ',
+        );
+
+        expect(
+            loadEnv().THOTH_KNOWLEDGE_DIR,
+        ).toBe('./custom-knowledge');
     });
 
 });
