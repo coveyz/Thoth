@@ -132,13 +132,15 @@ THOTH_EMBEDDING_BATCH_SIZE=32
 
 自动测试中的 RAG 使用 Vitest Mock Embedding，不会调用真实 API。
 
-> THOTH_EMBEDDING_BATCH_SIZE 控制文档索引构建时每批发送的文本数量，默认 32，必须为正整数。未配置或为空白时使用默认值，非法配置会阻止服务启动。批处理函数已完成，索引构建接入后会使用该配置；当前聊天检索尚未切换到新索引。Embedding 单次请求超时为 30 秒，暂不自动重试。
+> THOTH_EMBEDDING_BATCH_SIZE 控制文档索引构建时每批发送的文本数量，默认 32，必须为正整数。未配置或为空白时使用默认值，非法配置会阻止服务启动。批处理函数已完成。Embedding 单次请求超时为 30 秒，暂不自动重试。
 
 ```env
 THOTH_KNOWLEDGE_DIR=./knowledge
 ```
 
->THOTH_KNOWLEDGE_DIR 指定新索引系统使用的知识库根目录，默认 ./knowledge。相对路径以 server 目录为基准，也可配置绝对目录；对外 Sources 仍只包含知识库内的相对路径。运行时创建不会读取文档，首次索引构建时才检查目录和加载文件。当前已完成默认运行时组装，聊天入口将在下一阶段切换到新索引。
+>THOTH_KNOWLEDGE_DIR 指定新索引系统使用的知识库根目录，默认 ./knowledge。相对路径以 server 目录为基准，也可配置绝对目录；对外 Sources 仍只包含知识库内的相对路径。运行时创建不会读取文档，首次索引构建时才检查目录和加载文件。当前已完成默认运行时组装
+RAG 已使用本地 Markdown/TXT 与内存索引。每个 App 维护一份独立索引，首次 RAG 请求触发构建，后续查询复用文档向量，只生成问题向量。关闭 RAG 不读取知识库、不构建索引、不调用 Embedding。当前不自动监听文件变化；修改文件后需要在服务内显式重建，手工演示也可以重启 Server 后重新发起 RAG 请求
+
 ---
 
 ### 4. 启动 Server

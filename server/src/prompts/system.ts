@@ -190,8 +190,12 @@ export const buildRagAnswerMessage = (params: {
             return [
                 `[source ${index + 1}]`,
                 `id: ${source.id}`,
+                `documentId: ${source.documentId}`,
                 `title: ${source.title}`,
                 `source: ${source.source}`,
+                `path: ${source.path}`,
+                `updatedAt: ${source.updatedAt}`,
+                `chunkIndex: ${source.chunkIndex}`,
                 `score: ${source.score}`,
                 `content:`,
                 source.content

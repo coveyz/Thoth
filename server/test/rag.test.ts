@@ -1,204 +1,298 @@
+import { unlink, utimes } from 'node:fs/promises';
 import request from 'supertest';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_RAG_INDEX_CONFIG } from '../src/rag/config';
 import { createTestEnv } from './helpers/createTestEnv';
 import { parseSSE, parseSSEJson } from './helpers/parseSSE';
 import { createApp } from '../src/app';
 import { embedTexts } from '../src/rag/embedding';
+import { createTestKnowledge } from './helpers/createTestKnowledge';
+import { loadKnowledgeDocuments } from '../src/rag/loader';
+import { buildRagIndex } from '../src/rag/indexBuilder';
+import { createRagIndexManager } from '../src/rag/indexManager';
+import type { EmbeddingFunction } from '../src/rag/embeddingBatch';
+import type { QueryEmbeddingFunction } from '../src/rag/retriever';
+import type { RagRuntime } from '../src/rag/runtime';
+import type { RagSource } from '../src/rag/types';
+import { prepareRagTurn } from '../src/orchestrators/ragOrchestrators';
 
 
-type SourcePayload = {
-    sources: Array<{
-        id: string;
-        documentId: string;
-        title: string;
-        source: string;
-
-        path: string;
-        updatedAt: string;
-
-        chunkIndex: number;
-        content: string;
-        score: number;
-    }>
-};
-
-type DonePayload = {
-    ok: boolean;
-};
-
-
-vi.mock('../src/rag/embedding.ts', () => {
-    return {
-        embedTexts: vi.fn(
-            async (texts: string[]): Promise<number[][]> => {
-                return texts.map((text) => {
-                    // retrieveSources 计算文档向量时，输入由 title、source 和 content 拼接而成。
-                    const isRagDocument = text.includes('Thoth 四周路线图')
-                        || text.includes('Thoth Week2 验收说明');
-                    if (isRagDocument) return [1, 0];
-                    // 相关问题也返回 [1, 0]。
-                    const isRelatedQuery = text.includes('Week3') ||
-                        text.includes('sources');
-                    if (isRelatedQuery) return [1, 0];
-                    // 其他问题视为无关问题，返回 [0, 1]。
-                    return [0, 1];
-                })
-            }
-        )
-    }
-});
+const UPDATED_AT = '2026-01-01T00:00:00.000Z';
 
 /**
- * 将所有 delta 的 data 拼成最终回答。
- * 生产端把回答拆成多个小片段发送，不能只检查一个 delta
+ * 真实 Loader、Builder、Manager、Retriever
+ * 仅注入确定性的文档和问题 Embedding
  */
-function collectAnswer(
-    events: ReturnType<typeof parseSSE>
-): string {
-    return events
-        .filter(event => event.name === 'delta')
-        .map(event => event.data)
+async function createRagFixture() {
+    const knowledge = await createTestKnowledge();
+
+    try {
+        const filePath = await knowledge.write(
+            'guide.md',
+            [
+                '# RAG 测试文档',
+                '',
+                'Thoth Week3 返回 sources，是为了让回答可以追溯依据。',
+            ].join('\n')
+        );
+
+        const modifiedAt = new Date(UPDATED_AT);
+        await utimes(filePath, modifiedAt, modifiedAt);
+
+        const env = createTestEnv({
+            THOTH_KNOWLEDGE_DIR: knowledge.root
+        });
+
+        const loadDocuments = vi.fn(loadKnowledgeDocuments);
+        const embedDocuments = vi.fn<EmbeddingFunction>(
+            async (texts) => texts.map(() => [1, 0])
+        );
+        const embedQuery = vi.fn<QueryEmbeddingFunction>(
+            async (texts: string[]) => {
+                return texts.map(text => {
+                    return text.includes('Week3') || text.includes('sources') ? [1, 0] : [0, 1];
+                })
+            }
+        );
+
+        const build = vi.fn(() => {
+            return buildRagIndex(
+                {
+                    knowledgeDir: env.THOTH_KNOWLEDGE_DIR,
+                    config: {
+                        ...DEFAULT_RAG_INDEX_CONFIG,
+                        embeddingBatchSize: env.THOTH_EMBEDDING_BATCH_SIZE
+                    }
+                },
+                {
+                    embed: embedDocuments,
+                    loadDocuments: loadDocuments
+                }
+            )
+        });
+
+        const indexManager = createRagIndexManager({ build })
+
+        const rag: RagRuntime = {
+            indexManager,
+            embedQuery
+        };
+
+        const app = createApp(env, { rag });
+
+        return {
+            app, env, rag, knowledge, filePath,
+            build, loadDocuments, embedDocuments, embedQuery
+        }
+
+    } catch (error: unknown) {
+        await knowledge.cleanup();
+        throw error;
+    };
+};
+
+let fixture: Awaited<ReturnType<typeof createRagFixture>>
+
+beforeEach(async () => {
+    fixture = await createRagFixture();
+});
+
+afterEach(async () => {
+    await fixture.knowledge.cleanup();
+});
+
+async function sendChat(message: string, rag = true) {
+    return request(fixture.app)
+        .post('/api/chat/stream')
+        .set('Accept', 'text/event-stream')
+        .send({
+            message,
+            toolChoice: 'none',
+            rag,
+        })
+        .expect(200)
+        .expect(
+            'Content-Type',
+            /text\/event-stream/,
+        );
+};
+
+function readSources(text: string): RagSource[] {
+    const event = parseSSE(text).find(item => {
+        return item.name === 'sources';
+    });
+
+    expect(event).toBeDefined();
+
+    return parseSSEJson<{ sources: RagSource[] }>(event!).sources;
+};
+
+function collectAnswer(text: string): string {
+    return parseSSE(text)
+        .filter((event) => event.name === 'delta')
+        .map((event) => event.data)
         .join('');
 };
 
-const app = createApp(createTestEnv());
+describe('本地索引 RAG 回归', () => {
+    it('RAG-01 命中文档并按兼容 SSE 顺序返回完整 Sources', async () => {
+        const response = await sendChat('Thoth Week3 为什么需要返回 sources？');
+        const names = parseSSE(response.text).map(event => event.name);
 
-describe('Thoth RAG regression', () => {
-    /**
-     * RAG-01: 相关问题的 Mock 向量和文档向量相同
-     * 所以至少返回一个 source
-     */
-    it('RAG-01 returns sources for a related question', async () => {
+        expect(names[0]).toBe('start');
+        expect(names[1]).toBe('sources');
+        expect(names).toContain('delta');
+        expect(names.at(-1)).toBe('done');
+        expect(names).not.toContain('error');
+
+        const sources = readSources(response.text);
+        expect(sources).toHaveLength(1);
+
+        expect(sources[0]).toMatchObject({
+            title: 'RAG 测试文档',
+            source: 'guide.md',
+            path: 'guide.md',
+            updatedAt: UPDATED_AT,
+            chunkIndex: 0,
+            score: 1,
+        });
+        expect(sources[0].id).toBeTruthy();
+        expect(sources[0].documentId).toBeTruthy();
+        expect(sources[0].content).toContain('Week3');
+        expect(sources[0]).not.toHaveProperty('embedding');
+
+        expect(JSON.stringify(sources)).not.toContain(fixture.knowledge.root);
+
+        expect(
+            fixture.embedQuery.mock.calls[0][1]?.signal,
+        ).toBeInstanceOf(AbortSignal);
+        expect(fixture.build).toHaveBeenCalledTimes(1);
+        expect(fixture.loadDocuments).toHaveBeenCalledTimes(1);
+    });
+
+    it('RAG-02 无关问题返回空 Sources 和文档未覆盖提示', async () => {
+        const response = await sendChat('南极企鹅今天中午吃了什么？');
+
+        expect(readSources(response.text)).toEqual([]);
+        expect(collectAnswer(response.text)).toContain('当前文档未覆盖这个问题')
+
+        const names = parseSSE(response.text).map(event => event.name);
+        expect(names).not.toContain('error');
+        expect(names.at(-1)).toBe('done');
+    });
+
+    it('RAG-03 关闭 RAG 时不读取文档、不构建、不调用 Embedding', async () => {
+        const response = await sendChat(
+            'Thoth Week3 为什么需要 sources?',
+            false
+        );
+
+        const names = parseSSE(response.text).map(event => event.name);
+        expect(names[0]).toBe('start');
+        expect(names).toContain('delta');
+        expect(names.at(-1)).toBe('done');
+        expect(names).not.toContain('sources');
+        expect(names).not.toContain('error');
+
+        expect(fixture.build).not.toHaveBeenCalled();
+        expect(fixture.loadDocuments).not.toHaveBeenCalled();
+        expect(fixture.embedDocuments).not.toHaveBeenCalled();
+        expect(fixture.embedQuery).not.toHaveBeenCalled();
+        expect(fixture.rag.indexManager.getState().status.state).toBe('pending');
+    });
+
+    it('连续查询复用文档索引，每次只新增问题 Embedding', async () => {
+        await sendChat('Week3 为什么返回引用？');
+        const firstSnapshot = fixture.rag.indexManager.getSnapshot();
+        await sendChat('sources 有什么作用？');
+
+        expect(fixture.rag.indexManager.getSnapshot()).toBe(firstSnapshot);
+        expect(fixture.build).toHaveBeenCalledTimes(1);
+        expect(fixture.loadDocuments).toHaveBeenCalledTimes(1)
+        expect(fixture.embedDocuments).toHaveBeenCalledTimes(1)
+        expect(fixture.embedQuery).toHaveBeenCalledTimes(2)
+    });
+
+    it('空知识库返回 no-hit 且不调用任何 Embedding', async () => {
+        await unlink(fixture.filePath);
+
+        const response = await sendChat('Week3 文档说了什么？');
+
+        expect(readSources(response.text)).toEqual([]);
+        expect(collectAnswer(response.text)).toContain('当前文档未覆盖这个问题');
+
+        expect(fixture.embedDocuments).not.toHaveBeenCalled();
+        expect(fixture.embedQuery).not.toHaveBeenCalled();
+
+        expect(fixture.rag.indexManager.getState().status).toMatchObject({
+            state: 'ready',
+            documentCount: 0,
+            chunkCount: 0
+        })
+    });
+
+    it('默认 App 使用本地知识库，缺少 Embedding Key 时安全报错', async () => {
+        /**
+         * 不注入 Runtime，验证默认组装路径。
+         * 测试 Env 的 Key 为空，Provider 会在 SDK 调用前失败。
+         */
+        const app = createApp(fixture.env);
         const response = await request(app)
             .post('/api/chat/stream')
             .set('Accept', 'text/event-stream')
             .send({
-                message: 'Thoth Week3 为什么需要返回 sources？',
+                message: 'Week3 文档说了什么？',
                 toolChoice: 'none',
                 rag: true,
             })
-            .expect(200)
-            .expect('Content-Type', /text\/event-stream/);
+            .expect(200);
 
         const events = parseSSE(response.text);
-        const eventNames = events.map(event => event.name);
+        expect(events.map((event) => event.name)).toEqual(['start', 'error']);
 
-        // RAG 协议顺序, starts, sources, delta, done
-        expect(eventNames[0]).toBe('start');
-        expect(eventNames[1]).toBe('sources');
-        expect(eventNames).toContain('delta');
-        expect(eventNames.at(-1)).toBe('done');
-        expect(eventNames).not.toContain('error');
+        const payload = parseSSEJson<{
+            code: string;
+            message: string;
+            requestId: string;
+        }>(events[1]);
 
-        const sourceEvent = events.find(event => event.name === 'sources');
-        expect(sourceEvent).toBeDefined();
+        expect(payload.code).toBe('EMBEDDING_ERROR');
+        expect(payload.message).toBe('知识库检索暂时不可用，请稍后重试');
+        expect(payload.requestId).toBeTruthy();
 
-        const sourcePayload = parseSSEJson<SourcePayload>(sourceEvent!);
-        expect(sourcePayload.sources.length).toBeGreaterThan(0);
-
-        const firstSource = sourcePayload.sources[0];
-        // 验证 source 不只是存在， 还包含前端展示所依赖的完整 metadata。
-        expect(firstSource.id).toBeTruthy();
-        expect(firstSource.documentId).toBeTruthy();
-        expect(firstSource.title).toBeTruthy();
-        expect(firstSource.source).toBeTruthy();
-        expect(firstSource.content).toBeTruthy();
-        expect(firstSource.chunkIndex).toBeGreaterThanOrEqual(0);
-
-        expect(firstSource.path).toBe('README.md');
-        expect(firstSource.updatedAt).toBe('1970-01-01T00:00:00.000Z');
-        // 所有公开 Source 都必须保留这两个字段
-        for (const source of sourcePayload.sources) {
-            expect(source.path).toBeTruthy();
-            // 检查常见 Unix / Windows 绝对路径形式
-            expect(source.path).not.toMatch(/^(?:\/|[A-Za-z]:[\\/]|\\\\)/)
-            expect(Number.isNaN(Date.parse(source.updatedAt))).toBe(false);
-            // Embedding 属于服务端内部索引数据
-            expect(source).not.toHaveProperty('embedding');
-        };
-
-        // Mock 相关向量完全相同，因此相似度应当为 1。
-        expect(firstSource.score).toBe(1);
-
-        const doneEvent = events.find((event) => event.name === 'done');
-        expect(doneEvent).toBeDefined();
-
-        const done = parseSSEJson<DonePayload>(doneEvent!);
-        expect(done.ok).toBe(true);
+        expect(response.text).not.toContain(fixture.knowledge.root);
     });
 
-    /**
-     * RAG-02: 
-     *  无关问题向量是 [0, 1]
-     *  文档向量是 [1, 0]
-     *
-     * 相似度为 0，低于 MIN_RAG_SCORE 0.55，
-     * 所有 Sources 都应该被过滤。
-     */
-    it('RAG-02 returns no sources for an unrelated question', async () => {
-        const response = await request(app)
-            .post('/api/chat/stream')
-            .set('Accept', 'text/event-stream')
-            .send({
-                message: '南极企鹅今天中午吃了什么？',
-                toolChoice: 'none',
-                rag: true,
-            })
-            .expect(200)
-            .expect(
-                'Content-Type',
-                /text\/event-stream/
-            );
-        const events = parseSSE(response.text);
-        const eventNames = events.map(event => event.name);
+    it('编排将完整引用 metadata 写入 Prompt，并传递查询 signal', async () => {
+        const controller = new AbortController();
 
-        expect(eventNames[0]).toBe('start');
-        expect(eventNames[1]).toBe('sources');
-        expect(eventNames).toContain('delta');
-        expect(eventNames.at(-1)).toBe('done');
-        expect(eventNames).not.toContain('error');
+        const prepared = await prepareRagTurn({
+            userMessage: 'Week3 sources 有什么作用？',
+            rag: fixture.rag,
+            signal: controller.signal,
+        });
 
+        const source = prepared.sources[0];
+        expect(source).toBeDefined();
 
-        const sourceEvent = events.find((event) => event.name === 'sources');
-        expect(sourceEvent).toBeDefined();
+        const prompt = prepared.finalMessages
+            .map((message) => message.content)
+            .join('\n');
+        expect(prompt).toContain(`[source 1]`);
+        expect(prompt).toContain(`id: ${source.id}`);
+        expect(prompt).toContain(`documentId: ${source.documentId}`);
+        expect(prompt).toContain('path: guide.md');
+        expect(prompt).toContain(`updatedAt: ${UPDATED_AT}`);
+        expect(prompt).toContain('chunkIndex: 0');
 
-        const sourcePayload = parseSSEJson<SourcePayload>(sourceEvent!);
-        // no-hit 仍然会sources， 但是数据控的
-        expect(sourcePayload.sources).toEqual([]);
+        expect(prompt).not.toContain('embedding');
+        expect(fixture.embedQuery).toHaveBeenCalledWith(
+            ['Week3 sources 有什么作用？'],
+            { signal: controller.signal },
+        );
 
-        const answer = collectAnswer(events);
-        expect(answer).toContain('当前文档未覆盖这个问题')
     });
 
-    /**
-     * RAG-03: rag为false 必须跳过检索， 不仅不能返回 sources 也不能调用 Embedding
-     */
-    it('RAG-03 skips retrieval when RAG is disabled', async () => {
-        const embedTextsMock = vi.mocked(embedTexts);
-        embedTextsMock.mockClear();
 
-        const response = await request(app)
-            .post('/api/chat/stream')
-            .set('Accept', 'text/event-stream')
-            .send({
-                message: 'Thoth Week3 为什么需要返回 sources？',
-                toolChoice: 'none',
-                rag: false,
-            })
-            .expect(200)
-            .expect('Content-Type', /text\/event-stream/);
-
-        const events = parseSSE(response.text);
-        const eventNames = events.map(event => event.name);
-
-        expect(eventNames[0]).toBe('start');
-        expect(eventNames).toContain('delta');
-        expect(eventNames.at(-1)).toBe('done');
-
-        expect(eventNames).not.toContain('sources');
-        expect(eventNames).not.toContain('error');
-
-        expect(embedTextsMock).not.toHaveBeenCalled();
-    });
-})
+});

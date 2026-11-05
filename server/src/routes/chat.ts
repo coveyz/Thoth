@@ -7,6 +7,7 @@ import { prepareRagTurn } from '../orchestrators/ragOrchestrators';
 import { AppError, isAbortError, toPublicError } from '../lib/error';
 
 import type { Env } from '../lib/env';
+import type { RagRuntime } from '../rag/runtime';
 import type { ToolChoice } from '../prompts/system';
 import { getRequestContext } from '../lib/requestContext';
 
@@ -20,7 +21,7 @@ const readToolChoice = (value: unknown): ToolChoice => {
     return 'auto'
 }
 
-export function chatRouter(env: Env) {
+export function chatRouter(env: Env, rag: RagRuntime) {
     const router = Router();
 
     router.post('/stream', async (req, res) => {
@@ -136,7 +137,8 @@ export function chatRouter(env: Env) {
             if (useRag) {
                 const prepared = await prepareRagTurn({
                     userMessage: message.trim(),
-                    env
+                    rag,
+                    signal: upstreamAbort.signal
                 });
 
                 if (clientClosed) return;

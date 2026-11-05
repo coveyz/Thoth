@@ -3,11 +3,15 @@ import cors from 'cors';
 
 import { requestLogger } from './lib/logger';
 import { chatRouter } from './routes/chat';
+import { createRagRuntime } from './rag/runtime';
 import type { Env } from "./lib/env";
 import type { LogWriter } from './lib/logger';
+import type { RagRuntime } from './rag/runtime';
+
 
 type CreateAppOptions = {
-    writeLog?: LogWriter
+    writeLog?: LogWriter;
+    rag?: RagRuntime;
 }
 
 /**
@@ -18,6 +22,8 @@ type CreateAppOptions = {
  */
 export function createApp(env: Env, options: CreateAppOptions = {}) {
     const app = express();
+
+    const rag = options?.rag ?? createRagRuntime(env);
 
     // 隐藏 Express 默认返回的 X-Powered-By 响应头。
     app.disable("x-powered-by");
@@ -33,7 +39,7 @@ export function createApp(env: Env, options: CreateAppOptions = {}) {
         res.json({ ok: true, version: '0.1.0' });
     });
     // 所有聊天接口统一挂载到 /api/chat
-    app.use('/api/chat', chatRouter(env));
+    app.use('/api/chat', chatRouter(env, rag));
 
     return app;
 };
