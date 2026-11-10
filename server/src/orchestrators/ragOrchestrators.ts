@@ -1,13 +1,12 @@
 import { retrieveSourcesFromSnapshot } from "../rag/retriever";
 import { buildRagAnswerMessage } from "../prompts/system";
+import { waitForPromise } from "../lib/waitForPromise";
 import type { ProviderMessage } from "../providers/types";
 import type { RagSource } from "../rag/types";
-import type { Env } from "../lib/env";
 import type { RagRuntime } from "../rag/runtime";
 
 type PrepareRagTurnInput = {
     userMessage: string;
-    // env: Env;
     rag: RagRuntime;
     signal: AbortSignal;
 }
@@ -31,8 +30,10 @@ export const prepareRagTurn = async (
     signal?.throwIfAborted();
 
     // 共享构建 不绑定当前 signal
-    //! 本阶段 等待构建结束， 下阶段取消本请求等待
-    const snapshot = await rag.indexManager.ensureReady();
+    const snapshot = await waitForPromise(
+        rag.indexManager.ensureReady(),
+        signal
+    );
 
     signal?.throwIfAborted();
 
