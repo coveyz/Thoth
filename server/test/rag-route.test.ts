@@ -1,5 +1,8 @@
+import { once } from 'node:events';
+import { createServer } from 'node:http';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Server } from 'node:http';
 
 import { createRagIndexManager } from "../src/rag/indexManager";
 import { createApp } from "../src/app";
@@ -7,11 +10,12 @@ import { createTestEnv } from "./helpers/createTestEnv";
 import { parseSSE, parseSSEJson } from './helpers/parseSSE';
 import { waitForPromise } from '../src/lib/waitForPromise';
 import { AppError } from '../src/lib/error';
+import * as sse from '../src/lib/sse';
 import type { RagIndexBuildResult } from "../src/rag/indexBuilder";
 import type { RagIndexBuildFunction } from "../src/rag/indexManager";
 import type { QueryEmbeddingFunction } from "../src/rag/retriever";
 import type { RagRuntime } from "../src/rag/runtime";
-
+import type { LogWriter, RequestLogEntry } from '../src/lib/logger';
 
 
 /**
@@ -82,7 +86,8 @@ function createResult(): RagIndexBuildResult {
 function createFixture(
     build: RagIndexBuildFunction,
     embedQuery: QueryEmbeddingFunction,
-    overallTimeout = 5000
+    overallTimeout = 5000,
+    writeLog?: LogWriter,
 ) {
     const indexManager = createRagIndexManager({ build });
 
@@ -99,7 +104,7 @@ function createFixture(
         }),
         {
             rag,
-            writeLog: () => { },
+            writeLog: writeLog ?? (() => { }),
         },
     );
 
@@ -150,6 +155,7 @@ function expectSafeError(
 };
 
 beforeEach(() => {
+    vi.resetAllMocks();
     controls.stream.mockClear();
 });
 
@@ -308,6 +314,239 @@ describe('RAG 接口的超时与安全错误', () => {
             expect(
                 fixture.indexManager.getSnapshot(),
             ).toBeNull();
+        },
+    );
+});
+
+/**
+ * 启动仅监听本机的临时测试服务
+ * 端口 0 表示交给系统分配空闲端口
+ */
+async function startTestServer(
+    app: ReturnType<typeof createApp>
+) {
+    const server = createServer(app);
+    //  先订约 避免遗漏 listening 事件
+    const listening = once(server, 'listening');
+
+    server.listen(0, '127.0.0.1');
+    await listening;
+
+    const address = server.address();
+
+    if (address === null || typeof address === 'string') {
+        await closeTestServer(server);
+        throw new Error('未取得测试服务端口');
+    };
+
+    return {
+        server,
+        url: `http://127.0.0.1:${address.port}`
+    }
+};
+
+/**
+ * 结束监听并关闭残留连接
+ * finally 中调用 避免测试失败后端口或链接 继续存活
+ */
+async function closeTestServer(server: Server) {
+    await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+            if (error) {
+                reject(error);
+                return;
+            };
+            resolve()
+        });
+
+        server.closeAllConnections();
+    });
+};
+
+/**
+ * fetch 收到响应头，不代表客户端已经收到 start 事件
+ * 持续读取，直到收到完整的第一个 SSE 事件
+ */
+async function readStartEvent(response: Response) {
+    if (response.body === null) {
+        throw new Error('SSE 响应缺少 body');
+    };
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+
+            if (done) {
+                throw new Error('连接在 start 事件之前结束');
+            }
+
+            text += decoder.decode(value, { stream: true });
+
+            const events = parseSSE(text);
+
+            if (text.includes('\n\n') && events.length > 0) {
+                expect(events[0].name).toBe('start');
+                return;
+            }
+        }
+    } finally {
+        reader.releaseLock();
+    }
+};
+
+describe('RAG 客户端断开连接', () => {
+    it.each([
+        { name: '等待共享构建', phase: 'build' },
+        { name: '生成问题向量', phase: 'query' },
+    ] as const)(
+        '$name 时断开连接会退出当前请求，并保留共享索引',
+        async ({ phase }) => {
+            const result = createResult();
+
+            const building = createDeferred<RagIndexBuildResult>();
+            const querying = createDeferred<number[][]>();
+
+            // 确认请求已经进入我们要测试的阶段。
+            const stageStarted = createDeferred<void>();
+            // 服务端日志用于观察服务端收到连接关闭事件。
+            const completed = createDeferred<RequestLogEntry>();
+
+            const build = vi.fn<RagIndexBuildFunction>(() => {
+                // phase === 'build' 让构建一直卡着
+                if (phase === 'build') {
+                    stageStarted.resolve(undefined);
+                    return building.promise;
+                }
+
+                return Promise.resolve(result);
+            });
+
+            let querySignal: AbortSignal | undefined;
+
+            const embedQuery = vi.fn<QueryEmbeddingFunction>()
+                .mockResolvedValue([[1, 0]]);
+
+            if (phase === 'query') {
+                embedQuery.mockImplementationOnce(
+                    (_texts, options) => {
+                        querySignal = options?.signal;
+                        stageStarted.resolve(undefined);
+
+                        return waitForPromise(
+                            querying.promise,
+                            options?.signal,
+                        );
+                    },
+                );
+            }
+
+            const fixture = createFixture(
+                build,
+                embedQuery,
+                5000,
+                entry => completed.resolve(entry),
+            );
+
+            // 保留真实写入行为，只记录调用。
+            const writeEvent = vi.spyOn(sse, 'safeWriteEvent');
+
+            const { server, url } = await startTestServer(fixture.app);
+            const clientController = new AbortController();
+
+            try {
+                const response = await fetch(
+                    `${url}/api/chat/stream`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'text/event-stream',
+                        },
+                        body: JSON.stringify({
+                            message: '准备停止的问题',
+                            toolChoice: 'none',
+                            rag: true,
+                        }),
+                        signal: clientController.signal,
+                    },
+                );
+
+                expect(response.status).toBe(200);
+
+                await readStartEvent(response);
+                await stageStarted.promise;
+
+                // 模拟客户端停止请求，而不是等待服务端超时。
+                clientController.abort();
+
+                const entry = await completed.promise;
+
+                expect(entry.outcome).toBe('client_closed');
+                expect(entry.errorCode).toBeUndefined();
+
+                if (phase === 'build') {
+                    expect(fixture.indexManager.getState().status.state).toBe('indexing');
+                    expect(fixture.indexManager.getSnapshot()).toBeNull();
+                    expect(embedQuery).not.toHaveBeenCalled();
+                } else {
+                    expect(querySignal).toBeInstanceOf(AbortSignal);
+                    expect(querySignal?.aborted).toBe(true);
+
+                    expect(fixture.indexManager.getSnapshot()).toBe(result.snapshot);
+                }
+
+                // 客户端已退出，原始任务随后完成。
+                building.resolve(result);
+                querying.resolve([[1, 0]]);
+
+                await fixture.indexManager.ensureReady();
+
+                // 让取消和完成产生的 Promise 回调执行完毕。
+                await new Promise<void>(resolve => {
+                    setImmediate(resolve);
+                });
+
+                expect(controls.stream).not.toHaveBeenCalled();
+
+                // 检查服务端没有尝试继续发送业务结果。
+                const eventNames = writeEvent.mock.calls.map(call => call[1]);
+
+                expect(eventNames).toContain('start');
+                expect(eventNames).not.toContain('sources');
+                expect(eventNames).not.toContain('delta');
+                expect(eventNames).not.toContain('done');
+                expect(eventNames).not.toContain('error');
+
+                // 新请求仍能使用已完成的共享索引。
+                const next = await sendChat(fixture.app);
+
+                expect(
+                    parseSSE(next.text).map(event => event.name)
+                ).toEqual([
+                    'start',
+                    'sources',
+                    'delta',
+                    'done',
+                ]);
+
+                expect(build).toHaveBeenCalledTimes(1);
+                expect(controls.stream).toHaveBeenCalledTimes(1);
+
+                expect(embedQuery).toHaveBeenCalledTimes(
+                    phase === 'build' ? 1 : 2,
+                );
+            } finally {
+                clientController.abort();
+                building.resolve(result);
+                querying.resolve([[1, 0]]);
+
+                await closeTestServer(server);
+                writeEvent.mockRestore();
+            }
         },
     );
 });
