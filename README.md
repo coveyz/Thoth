@@ -6,7 +6,8 @@ Thoth 是一个学习型 AI Chat 与知识库问答项目，目前支持：
 - 停止生成
 - Fake / DeepSeek OpenAI-compatible Chat Provider
 - 本地工具调用
-- RAG 文档检索
+- 本地 Markdown/TXT 接入、批量 Embedding 与内存索引检索
+- 并发索引构建复用、状态查询与原子重建
 - Sources 引用展示
 - 统一错误码和前端错误提示
 - requestId 与结构化请求日志
@@ -109,7 +110,7 @@ THOTH_MODEL=deepseek-chat
 
 #### RAG Embedding 配置
 
-RAG 使用独立的 Embedding Provider：
+RAG 使用独立的 OpenAI-compatible Embedding Provider：
 
 ```env
 THOTH_EMBEDDING_BASE_URL=https://api.openai.com/v1
@@ -118,28 +119,124 @@ THOTH_EMBEDDING_MODEL=text-embedding-3-small
 THOTH_EMBEDDING_BATCH_SIZE=32
 ```
 
-也可以使用支持 OpenAI-compatible Embedding API 的其他 Provider。
+也可以配置支持该协议的其他 Embedding 服务。Chat Key 与 Embedding Key
+是两套独立配置；Fake Chat 不包含运行时 Fake Embedding。
 
-需要注意：
+Embedding Key 为空时，普通聊天和工具调用仍可使用；RAG 需要生成向量时
+返回 `EMBEDDING_ERROR`。合法空知识库无需生成向量，可以返回空 Sources；
+目录或文档加载失败则可能先返回 `DOCUMENT_LOAD_ERROR`。
 
-> Fake Chat Provider 不包含运行时 Fake Embedding Provider。
+`THOTH_EMBEDDING_BATCH_SIZE` 控制文档索引构建时每批发送的文本数量。
 
-当 `THOTH_EMBEDDING_API_KEY` 为空时：
+- 默认 `32`
+- 必须为正安全整数
+- 未配置或为空白时使用默认值
+- 非法配置会阻止服务启动
 
-- 普通聊天仍然可用
-- 工具调用仍然可用
-- 开启 RAG 会返回 `EMBEDDING_ERROR`
+Embedding 单次请求超时为 30 秒，关闭 SDK 自动重试。
+这是单次外部请求的限制，不是整个索引构建的总时限。
 
-自动测试中的 RAG 使用 Vitest Mock Embedding，不会调用真实 API。
-
-> THOTH_EMBEDDING_BATCH_SIZE 控制文档索引构建时每批发送的文本数量，默认 32，必须为正整数。未配置或为空白时使用默认值，非法配置会阻止服务启动。批处理函数已完成。Embedding 单次请求超时为 30 秒，暂不自动重试。
+#### 本地知识库
 
 ```env
 THOTH_KNOWLEDGE_DIR=./knowledge
 ```
 
->THOTH_KNOWLEDGE_DIR 指定新索引系统使用的知识库根目录，默认 ./knowledge。相对路径以 server 目录为基准，也可配置绝对目录；对外 Sources 仍只包含知识库内的相对路径。运行时创建不会读取文档，首次索引构建时才检查目录和加载文件。当前已完成默认运行时组装
-RAG 已使用本地 Markdown/TXT 与内存索引。每个 App 维护一份独立索引，首次 RAG 请求触发构建，后续查询复用文档向量，只生成问题向量。关闭 RAG 不读取知识库、不构建索引、不调用 Embedding。当前不自动监听文件变化；修改文件后需要在服务内显式重建，手工演示也可以重启 Server 后重新发起 RAG 请求
+相对目录以 `server` 目录为基准，也支持配置绝对目录。
+默认示例文档位于：
+
+```text
+server/knowledge/
+├── thoth-roadmap.md
+└── week2-tools.txt
+```
+
+支持递归读取 UTF-8 Markdown（`.md`）和 TXT（`.txt`）。
+隐藏文件、隐藏目录、不支持的扩展名和软链接会被忽略。
+
+文档按相对路径确定性排序。空白文件会跳过并记录诊断；
+符合读取条件的文档加载失败时，整次索引构建失败。
+
+文档 ID 根据规范化相对路径稳定生成。Markdown 优先使用一级标题，
+没有一级标题时回退到文件名；TXT 使用文件名。`updatedAt` 来自原始文件
+修改时间，快照的 `builtAt` 表示本次索引构建完成时间。
+
+#### 索引与查询生命周期
+
+每个 App 创建一份独立的 RAG Runtime。创建 Runtime 不读取文件，
+首次需要索引的 RAG 请求才触发构建：
+
+```text
+本地文件
+→ Loader
+→ Chunker
+→ Batch Embedding
+→ 完整索引快照
+```
+
+并发请求复用同一次构建。后续查询复用文档向量，
+只为当前问题生成 Query Embedding。
+
+索引项把 Chunk 与对应向量保存在同一个 `IndexItem` 中。
+每次查询使用一份完整快照，避免异步等待期间混用新旧索引。
+
+关闭 RAG 时，不读取知识库、不构建索引、不调用 Embedding。
+
+当前切分参数为 chunkSize 180、overlap 40；
+检索参数为 topK 3、minScore 0.55，定义在
+`server/src/rag/config.ts`，暂不增加对应环境变量。
+
+#### 文件变化与完整重建
+
+文件变化不会自动刷新已有快照。
+服务内需要显式调用同一个 Runtime 的 `indexManager.rebuild()`：
+
+```text
+保留旧快照
+→ 读取当前全部文件
+→ 构建完整新快照
+→ 成功后一次性替换
+```
+
+重建能反映文档新增、修改和删除。
+
+- 首次构建失败：没有可用快照，后续请求可以重试。
+- 已有快照时重建失败：记录失败，保留旧快照。
+- 成功构建空快照：替换旧快照，后续查询返回空 Sources。
+
+Manager 在服务端内部提供 `getState()` 和 `getDiagnostics()`。
+状态为 `pending`、`indexing`、`ready` 或 `failed`；当前可用快照与最近
+失败摘要单独保存，因此 `failed` 不代表旧快照一定不可查询。
+已有快照时，`ensureReady()` 直接返回它，不等待正在进行的重建。
+
+当前没有公开的重建接口，也不自动监听文件变化。
+手工演示文件更新时，可以修改文件、重启 Server，
+再发起 RAG 请求。这会构建新的内存索引。
+
+索引仅保存在当前进程内，Server 重启后需要重新构建。
+
+#### 取消、超时与安全错误
+
+用户停止、连接关闭或当前请求整体超时时，
+结束当前请求的等待和后续查询、回答流程。
+已启动的共享索引构建继续执行，供其他请求使用。
+
+问题 Embedding 接收当前请求的 AbortSignal；
+共享文档构建不绑定某个聊天请求的 signal。
+
+Sources 包含文档 metadata、片段正文和本次检索分数，
+不公开机器绝对路径或 Embedding 向量。
+
+公开字段为 `id`、`documentId`、`title`、`source`、`path`、
+`updatedAt`、`chunkIndex`、`content` 和 `score`。
+`score` 属于本次问题的检索结果，不是 Chunk 的固定属性。
+
+文件加载失败使用 `DOCUMENT_LOAD_ERROR`，
+索引或查询维度不一致等问题使用 `RAG_INDEX_ERROR`，
+Embedding 服务失败使用 `EMBEDDING_ERROR`。
+
+对外错误仅包含安全的 code、message 和 requestId，
+不包含原始 cause 或 stack。
 
 ---
 
@@ -252,6 +349,13 @@ pnpm -C server test
 - 首 Token 超时
 - 整体超时
 - 结构化请求日志
+- 本地 Loader、metadata 传播与 Chunk 切分
+- 批量 Embedding、响应 index 和向量维度校验
+- 索引状态、并发构建复用、失败重试与原子重建
+- 文件新增、修改、删除后的检索与最新 Sources
+- Query Embedding 取消、共享构建等待取消与超时
+- 客户端断开后的请求退出与索引复用
+- 文档和索引错误的安全 SSE 输出
 
 Server TypeScript 检查：
 
@@ -271,7 +375,13 @@ Web 生产构建：
 pnpm -C web run build
 ```
 
-自动测试固定使用 Fake Chat Provider 和 Mock Embedding，不需要真实 API Key。
+自动测试使用内置或测试专用 Fake Chat Provider，以及注入的确定性
+Embedding／SDK Mock，不需要真实 API Key，也不访问外部模型服务。
+文件系统测试使用独立临时目录，不读取开发者的真实知识库。
+
+Week5 验收基线为 **18 个测试文件、205 个测试**。
+`web build` 已包含 Web 类型检查，无需为了构建再单独重复执行一次。
+完整验收与手工演示记录见 [WEEK5_CHECKLIST.md](WEEK5_CHECKLIST.md)。
 
 ---
 
@@ -321,7 +431,7 @@ RAG 需要配置有效的 Embedding Provider：
 curl -N http://localhost:3001/api/chat/stream \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
-  -d '{"message":"Thoth Week3 为什么需要返回 sources？","toolChoice":"none","rag":true}'
+  -d '{"message":"Thoth Week5 如何处理索引重建失败？","toolChoice":"none","rag":true}'
 ```
 
 预期事件顺序：
@@ -332,6 +442,11 @@ start
 → delta
 → done
 ```
+
+该问题的依据位于 `server/knowledge/thoth-roadmap.md`。
+检查 Sources 是否包含“重建失败时保留上一份成功快照”。
+真实命中受 Embedding 模型和检索阈值影响；Fake Chat 模式可验证协议，
+但评估真实回答质量需要配置真实 Chat Provider。
 
 ---
 
@@ -385,6 +500,17 @@ THOTH_EMBEDDING_MODEL
 ```
 
 普通 Chat Key 和 Embedding Key 是两套独立配置。
+
+#### 开启 RAG 后显示 `DOCUMENT_LOAD_ERROR`
+
+检查 `THOTH_KNOWLEDGE_DIR` 是否存在、是否可读，以及目录内文档是否为
+合法 UTF-8。相对路径以 `server` 为基准，不随启动命令的当前目录改变。
+
+#### 修改知识库后仍然返回旧内容
+
+已有快照不会自动刷新。服务内显式调用同一 Runtime 的
+`indexManager.rebuild()`，或在手工演示中重启 Server 后重新提问。
+当前没有用于重建的 HTTP 接口。
 
 #### 修改 `.env` 后没有生效
 
@@ -486,24 +612,27 @@ Week3 已完成最小可用 RAG 闭环。后续不再把“工程化”和“RAG
 
 ### 第 5 周：文档接入 + 索引构建
 
-**本周目标**：不再把知识库写死在 `document.ts`，开始支持真实文档接入和索引构建。
+**本周目标**：从本地 Markdown/TXT 接入知识，构建可复用、可查询、可重建的内存索引。
 
 **阶段拆分**
 
-- [ ] 阶段 1：设计文档 metadata：id、title、source、path、updatedAt
-- [ ] 阶段 2：支持读取本地 Markdown / TXT 文档
-- [ ] 阶段 3：把 `rawRagDocuments` 从代码写死改成从文件加载
-- [ ] 阶段 4：文档 chunk 后生成可检索 index
-- [ ] 阶段 5：embedding 支持 batch，避免一次请求过多 texts
-- [ ] 阶段 6：支持索引状态：pending / indexing / ready / failed
-- [ ] 阶段 7：支持索引重建
+- [x] 阶段 1：设计文档 metadata：id、title、source、path、updatedAt
+- [x] 阶段 2：支持安全、确定性地读取本地 Markdown / TXT 文档
+- [x] 阶段 3：删除写死文档与旧缓存，将聊天接入本地索引
+- [x] 阶段 4：文档 chunk 后生成绑定向量的 IndexItem 与完整快照
+- [x] 阶段 5：Embedding 支持串行 batch 与结果校验
+- [x] 阶段 6：支持索引状态、失败诊断与并发构建复用
+- [x] 阶段 7：支持原子重建、失败保留旧快照与请求取消
 
 **完成标准**
 
-- [ ] 新增一个 Markdown / TXT 文件后，RAG 能检索到
-- [ ] 修改文档后，可以重建索引
-- [ ] 删除文档后，不再命中旧内容
-- [ ] sources 能展示文档 metadata
+- [x] 新增文档后，完整重建能够检索到新内容（自动测试）
+- [x] 修改文档后，重建与检索返回最新内容及 metadata（自动测试）
+- [x] 删除文档后，重建不再返回旧文档（自动测试）
+- [x] Sources 展示文档标题、相对来源、片段与检索分数（页面演示）
+- [x] Server 回归、类型检查与 Web 生产构建通过
+
+详细证据和其余手工演示待确认项见 [WEEK5_CHECKLIST.md](WEEK5_CHECKLIST.md)。
 
 **一句话**：本周让知识可以从文件进入 Thoth。
 
