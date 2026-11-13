@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg17
+    environment:
+      POSTGRES_USER: thoth_dev
+      POSTGRES_PASSWORD: thoth_dev_local
+      POSTGRES_DB: thoth_dev
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thoth_dev -d thoth_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  postgres-test:
+    image: pgvector/pgvector:0.8.0-pg17
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER: thoth_test
+      POSTGRES_PASSWORD: thoth_test_local
+      POSTGRES_DB: thoth_test
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thoth_test -d thoth_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_dev_data:
+  postgres_test_data:
