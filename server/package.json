@@ -8,7 +8,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:check": "tsx src/db/checkDatabase.ts",
-    "db:migrate": "node-pg-migrate up --migrations-dir migrations --database-url-var THOTH_DATABASE_URL"
+    "db:migrate": "node-pg-migrate up --migrations-dir migrations --database-url-var THOTH_DATABASE_URL",
+    "db:run": "docker compose --profile test up --wait",
+    "db:stop": "docker compose --profile test stop"
   },
   "keywords": [],
   "author": "",
