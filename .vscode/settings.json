@@ -3,6 +3,7 @@
         "chunker",
         "healthz",
         "Millis",
+        "timestamptz",
         "unstub"
     ],
     "workbench.colorCustomizations": {
