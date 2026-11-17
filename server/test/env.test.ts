@@ -94,3 +94,64 @@ describe('Embedding Batch 环境配置', () => {
     });
 
 });
+
+describe('数据库环境配置', () => {
+    beforeEach(() => {
+        vi.stubEnv('THOTH_EMBEDDING_BATCH_SIZE', '32');
+        vi.stubEnv('THOTH_DATABASE_URL', undefined);
+    });
+
+    it('未配置时返回空字符串', () => {
+        expect(loadEnv().THOTH_DATABASE_URL).toBe('');
+    });
+
+    it('纯空白配置返回空字符串', () => {
+        vi.stubEnv('THOTH_DATABASE_URL', '   ');
+        expect(loadEnv().THOTH_DATABASE_URL).toBe('');
+    });
+
+    it.each(['postgres', 'postgresql'])(
+        '接受 %s 协议并移除首尾空白',
+        (protocol) => {
+            const value =
+                `${protocol}://tester:example@127.0.0.1:5433/thoth_test`;
+
+            vi.stubEnv('THOTH_DATABASE_URL', `  ${value}  `);
+
+            expect(loadEnv().THOTH_DATABASE_URL).toBe(value);
+        }
+    );
+
+    it.each([
+        'not-a-url',
+        'https://localhost/thoth_dev',
+        'postgresql:///thoth_dev',
+        'postgresql://localhost',
+    ])('拒绝非法数据库地址：%s', (value) => {
+        vi.stubEnv('THOTH_DATABASE_URL', value);
+
+        expect(() => loadEnv()).toThrow(
+            'THOTH_DATABASE_URL 必须是包含主机和数据库名的 PostgreSQL 连接地址'
+        );
+    });
+
+    it('配置错误不公开连接串中的密码', () => {
+        const secret = 'private-test-password';
+
+        vi.stubEnv(
+            'THOTH_DATABASE_URL',
+            `https://tester:${secret}@localhost/thoth_test`
+        );
+
+        let caught: unknown;
+
+        try {
+            loadEnv();
+        } catch (error) {
+            caught = error;
+        }
+
+        expect(caught).toBeInstanceOf(Error);
+        expect((caught as Error).message).not.toContain(secret);
+    });
+})

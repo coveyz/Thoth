@@ -1,3 +1,4 @@
+import { loadEnv } from '../lib/env';
 import { createDatabasePool } from './pool';
 
 type DatabaseIdentity = {
@@ -6,7 +7,8 @@ type DatabaseIdentity = {
 };
 
 async function main(): Promise<void> {
-    const connectionString = process.env.THOTH_DATABASE_URL?.trim();
+    const env = loadEnv();
+    const connectionString = env.THOTH_DATABASE_URL;
 
     if (!connectionString) {
         throw new Error('缺少数据库连接配置');

@@ -3,6 +3,7 @@ import { DEFAULT_RAG_INDEX_CONFIG } from "../rag/config";
 export type Env = {
     PORT: number;
     CORS_ORIGIN: string;
+    THOTH_DATABASE_URL: string;
 
     THOTH_BASE_URL: string;
     THOTH_API_KEY: string;
@@ -43,11 +44,40 @@ function positiveInteger(name: string, fallback: number) {
     return value;
 };
 
+/**
+ * 校验配置格式
+ * 不尝试连接数据库
+ */
+function databaseUrl(): string {
+    const value = process.env.THOTH_DATABASE_URL?.trim() ?? '';
+
+    if (!value) return '';
+
+    try {
+        const url = new URL(value);
+
+        if (
+            !['postgres:', 'postgresql:'].includes(url.protocol) ||
+            !url.hostname ||
+            url.pathname === '' ||
+            url.pathname === '/'
+        ) {
+            throw new Error();
+        };
+
+        return value;
+    } catch {
+        // 不把连接串或原始解析错误公开出去
+        throw new Error('THOTH_DATABASE_URL 必须是包含主机和数据库名的 PostgreSQL 连接地址')
+    }
+};
+
 export function loadEnv(): Env {
     return {
         PORT: num('PORT', 3001),
         THOTH_EMBEDDING_BATCH_SIZE: positiveInteger('THOTH_EMBEDDING_BATCH_SIZE', DEFAULT_RAG_INDEX_CONFIG.embeddingBatchSize),
         CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+        THOTH_DATABASE_URL: databaseUrl(),
 
         // Week1：允许为空（为空则走 fake provider），但建议你配上 DeepSeek
         THOTH_BASE_URL: process.env.THOTH_BASE_URL || 'https://api.deepseek.com',

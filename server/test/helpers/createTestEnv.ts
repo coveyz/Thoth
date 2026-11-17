@@ -13,6 +13,8 @@ export function createTestEnv(
         PORT: 3001,
         /**  CORS 对服务端直接测试没有太大影响， */
         CORS_ORIGIN: 'http://localhost:5173',
+        // 离线单元测试不默认连接任何数据库。
+        THOTH_DATABASE_URL: '',
 
         /**
         * Chat Provider 配置。
