@@ -4,8 +4,11 @@
         "chunker",
         "healthz",
         "Millis",
+        "nspname",
+        "nspowner",
         "timestamptz",
-        "unstub"
+        "unstub",
+        "userbyid"
     ],
     "workbench.colorCustomizations": {
         "activityBar.activeBackground": "#7a73eb",

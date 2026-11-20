@@ -1,29 +1,46 @@
 import { createTestDatabasePool } from './helpers/createTestDatabasePool';
+import { withTestSchema } from './helpers/withTestSchema';
 
 async function main(): Promise<void> {
     const pool = await createTestDatabasePool(process.env.THOTH_TEST_DATABASE_URL);
 
     try {
-        const result = await pool.query<{
-            name: string;
-            default_version: string;
-        }>(
-            `
-            SELECT name, default_version
-                FROM pg_available_extensions
-                WHERE name = $1
-            `,
-            ['vector']
-        );
+        await withTestSchema(pool, async (client, schema) => {
+            console.log('本次测试 schema:', schema);
 
-        const extension = result.rows[0];
+            await client.query(`
+                CREATE TABLE "${schema}".probe (
+                    id integer PRIMARY KEY,
+                    content text NOT NULL
+                )
+            `);
 
-        if (!extension) {
-            throw new Error('测试数据库不支持 vector 扩展');
-        };
+            await client.query(`
+                INSERT INTO "${schema}".probe (id, content)
+                    VALUES ($1, $2)
+                `,
+                [1, '测试数据']
+            );
 
-        console.log('测试数据库身份检查通过');
-        console.log('可用拓展', extension);
+            const result = await client.query<{
+                id: number;
+                content: string;
+            }>(
+                `SELECT id, content FROM "${schema}".probe`
+            );
+
+            if (
+                result.rows.length !== 1
+                || result.rows[0]?.id !== 1
+                || result.rows[0]?.content !== '测试数据'
+            ) {
+                throw new Error('测试数据读写结果不符合预期');
+            };
+
+            console.log('测试数据读写通过');
+        });
+
+        console.log('本次测试 schema 已清理');
     } finally {
         await pool.end();
     }
@@ -31,7 +48,9 @@ async function main(): Promise<void> {
 
 
 main().catch(() => {
-    console.error('测试数据库检查失败，请检查专用测试配置和数据库运行状态');
+    console.error(
+        '测试数据库检查失败，请检查测试配置、数据库状态及清理结果'
+    );
 
     process.exitCode = 1;
 });
