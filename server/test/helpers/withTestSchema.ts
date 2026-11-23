@@ -49,6 +49,13 @@ export async function withTestSchema(
                 await client.query(`DROP SCHEMA "${schema}" CASCADE`);
             };
         } finally {
+            try {
+                await client.query('RESET search_path');
+            } catch(error) {
+                // 恢复失败的连接不再交给其他使用者
+                client.release(true);
+                throw error;
+            };
             client.release();
         }
     }

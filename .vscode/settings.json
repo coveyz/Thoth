@@ -2,10 +2,12 @@
     "cSpell.words": [
         "btrim",
         "chunker",
+        "extversion",
         "healthz",
         "Millis",
         "nspname",
         "nspowner",
+        "pgmigrations",
         "timestamptz",
         "unstub",
         "userbyid"
